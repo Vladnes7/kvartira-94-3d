@@ -108,7 +108,9 @@ async function boot() {
     for (const m of MOVERS) {
       if (Math.abs(m.open - m.target) <= 0.001) continue;
       moving = true; m.open += (m.target - m.open) * (1 - Math.exp(-dt * 6)); if (Math.abs(m.open - m.target) <= 0.001) m.open = m.target;
-      if (m.kind === 'hinge') m.inner.rotation.y = m.sign * m.open * m.max; else m.inner.position.z = m.open * m.max;
+      if (m.kind === 'hinge') m.inner.rotation[m.axis || 'y'] = m.sign * m.open * m.max;
+      else if (m.kind === 'custom') m.apply(m.open);
+      else m.inner.position.z = m.open * m.max;
       for (const me of m.inside) me.visible = m.open > 0.004;
     }
     if (moving || wasMoving) renderer.shadowMap.needsUpdate = true;

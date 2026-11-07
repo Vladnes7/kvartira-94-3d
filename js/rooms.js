@@ -25,10 +25,10 @@ function living(B, W) {
   P.sofaModular(W.sub(5.84, 0.012, 0.3), 'sofa', { w: 2.6, d: 0.95, chaiseW: 1.0, chaiseD: 1.6, chaiseLeft: true });
   // sofa cushions
   const S = W.sub(5.84, 0.012, 0.3);
-  P.pillow(S, 0.5, 0.45, 0.16, 1.35, 0.42, 0.33, 'pillow_stripe', 0.1, -0.35);
-  P.pillow(S, 0.5, 0.45, 0.16, 1.85, 0.42, 0.33, 'pillow_white', -0.05, -0.35);
-  P.pillow(S, 0.5, 0.45, 0.16, 2.3, 0.42, 0.33, 'pillow_stripe', -0.15, -0.35);
-  P.pillow(S, 0.5, 0.45, 0.16, 0.45, 0.42, 0.33, 'pillow_white', 0.1, -0.35);
+  P.restPillow(S, 0.5, 0.45, 0.16, 1.35, 0.42, 0.33, 'pillow_stripe', 0.1, -0.35);
+  P.restPillow(S, 0.5, 0.45, 0.16, 1.85, 0.42, 0.33, 'pillow_white', -0.05, -0.35);
+  P.restPillow(S, 0.5, 0.45, 0.16, 2.3, 0.42, 0.33, 'pillow_stripe', -0.15, -0.35);
+  P.restPillow(S, 0.5, 0.45, 0.16, 0.45, 0.42, 0.33, 'pillow_white', 0.1, -0.35);
   // coffee table cube + decor
   const ct = W.sub(7.52, 0.012, 1.945);
   P.coffeeCube(ct, 0.9, 0.38, 'coffee');
@@ -77,9 +77,10 @@ function kitchen(B, W) {
     s.box(w - 0.004, plinth, 0.019, 0, 0, -0.05, 'black');
     if (kind === 'oven') {
       CW.carcass(s.sub(0, 0, -0.01), w, up1, 0.57, 'k_tall', { bottom: false, shelves: [plinth, 0.85, 2.38] });
-      s.box(w - 0.036, 1.96 - 0.868, 0.54, 0, 0.868, -0.3, 'k_tall'); // appliance housing
-      s.box(w - 0.05, 0.58, 0.03, 0, 0.88, 0.0, 'appliance'); s.box(w - 0.1, 0.03, 0.03, 0, 1.4, 0.02, 'steel'); s.box(w - 0.14, 0.32, 0.002, 0, 0.98, 0.016, 'glass_display');
-      s.box(w - 0.05, 0.44, 0.03, 0, 1.49, 0.0, 'appliance'); s.box(w - 0.1, 0.025, 0.03, 0, 1.86, 0.02, 'steel');
+      // oven (turkey) and compact combi oven above (chicken): hollow, drop-down doors
+      s.box(w - 0.036, 0.03, 0.54, 0, 1.46, -0.3, 'k_tall'); s.box(w - 0.036, 0.03, 0.54, 0, 1.93, -0.3, 'k_tall');
+      CW.ovenUnit(s, w, 0.88, 0.58, (f, tw, hm) => CW.roastBird(f, tw, hm, true));
+      CW.ovenUnit(s, w, 1.49, 0.44, (f, tw, hm) => CW.roastBird(f, tw, hm, false), { panel: 0.06 });
       CW.drawer(s.sub(0, plinth, 0), w, 0.746, 0.5, (L) => L.box(w - 0.004, 0.746, 0.019, 0, 0, 0.0095, 'k_tall'), fill('pots', 2), { boxH: 0.3 });
       CW.hinged(s.sub(0, 1.96, 0), w, 'L', (L) => L.box(w - 0.004, up1 - 1.96 - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'));
       CW.kitchenRow(s, -w / 2 + 0.02, w / 2 - 0.02, 1.96, -0.3, 'packs', 3);
@@ -162,20 +163,41 @@ function kitchen(B, W) {
   for (const c of [0.52, 0.82, 1.12]) CW.hinged(Rr.sub(c, up0, -0.6 + upD), 0.3, 'R', (L) => P.shakerDoor(L, 0.3, up1 - up0 - 0.004, 'k_base', pull('L', 0.06)), { angle: 1.5 });
   CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.018, uz, 'mugs', 41); CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.468, uz, 'jars', 42); CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.918, uz, 'glasses', 43);
   Rr.box(1.28, 0.008, 0.02, 0.64, up0 - 0.012, -0.3, 'led');
-  // fridge column (dark oak) 1.28..1.90: freezer drawer + fridge door, lit white interior with food
-  const fc = Rr.sub(1.59, 0, 0);
-  fc.box(0.616, plinth, 0.019, 0, 0, -0.05, 'black');
-  CW.carcass(fc.sub(0, 0, -0.01), 0.62, up1, 0.57, 'k_tall', { bottom: false, shelves: [plinth, 1.1] });
+  // fridge column (dark oak) 1.28..1.97 — runs right up to the wall (no gap): freezer below, fridge above,
+  // both behind hinged oak fronts, lit white interiors with food
+  const fc0 = 1.28, fc1 = 1.97, cw = fc1 - fc0, iw = cw - 0.06;
+  const fc = Rr.sub((fc0 + fc1) / 2, 0, 0);
+  fc.box(cw - 0.004, plinth, 0.019, 0, 0, -0.05, 'black');
+  CW.carcass(fc.sub(0, 0, -0.01), cw, up1, 0.57, 'k_tall', { bottom: false, shelves: [plinth, 1.1] });
   const fy = 1.13, fh = up1 - 1.15;
-  CW.carcass(fc.sub(0, fy, -0.03), 0.56, fh, 0.52, 'fridge_in', { shelves: [0.36, 0.7, 1.04, 1.36], shelfMat: 'glass_display' });
+  CW.carcass(fc.sub(0, fy, -0.03), iw, fh, 0.52, 'fridge_in', { shelves: [0.36, 0.7, 1.04, 1.36], shelfMat: 'glass_display' });
   fc.box(0.3, 0.008, 0.02, 0, fy + fh - 0.03, -0.12, 'led');
-  CW.drawer(fc.sub(0, plinth, 0), 0.616, 0.996, 0.5, (L) => { L.box(0.616, 0.996, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.5, 0.02, -0.26, 0.35, 0.03, 'brass'); }, fill('frozen', 3), { boxH: 0.42 });
-  CW.hinged(fc.sub(0, 1.12, 0), 0.616, 'R', (L) => { L.box(0.616, up1 - 1.12 - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.7, 0.02, -0.26, 0.08, 0.03, 'brass'); }, {
-    angle: 1.6,
+  // freezer compartment: frosty liner, three clear pull-out baskets with frozen food
+  const zy = plinth + 0.02, zh = 1.1 - plinth - 0.03;
+  CW.carcass(fc.sub(0, zy, -0.03), iw, zh, 0.52, 'freezer_in');
+  fc.box(iw - 0.04, 0.012, 0.44, 0, zy + zh - 0.04, -0.3, 'frost_ice');
+  fc.box(0.22, 0.008, 0.02, 0, zy + zh - 0.03, -0.1, 'led');
+  for (let i = 0; i < 3; i++) {
+    const by = zy + 0.03 + i * 0.3, bh2 = 0.26, bw2 = iw - 0.05, bd = 0.44;
+    fc.box(bw2, bh2, 0.012, 0, by, -0.06, 'freezer_tray');                                      // front
+    fc.box(bw2, 0.03, 0.014, 0, by + bh2 - 0.04, -0.045, 'gasket');                              // grip
+    for (const sx of [-1, 1]) fc.box(0.008, bh2 * 0.8, bd, sx * (bw2 / 2 - 0.004), by, -0.06 - bd / 2, 'freezer_tray');
+    fc.box(bw2, 0.008, bd, 0, by, -0.06 - bd / 2, 'freezer_tray'); fc.box(bw2, bh2 * 0.8, 0.008, 0, by, -0.06 - bd, 'freezer_tray');
+    CW.drawerFill(fc.sub(0, by + 0.01, -0.06 - bd / 2), bw2 - 0.03, bh2 - 0.06, bd - 0.04, 'frozen', 3 + i);
+  }
+  CW.hinged(fc.sub(0, plinth, 0), cw - 0.004, 'R', (L) => { L.box(cw - 0.004, 1.12 - plinth - 0.006, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.5, 0.02, -cw / 2 + 0.05, 0.4, 0.03, 'brass'); }, {
     back: (L) => {
-      L.box(0.54, up1 - 1.2, 0.012, 0, 0.04, -0.006, 'fridge_in');
+      L.box(iw - 0.02, 1.12 - plinth - 0.1, 0.012, 0, 0.045, -0.006, 'freezer_in');
+      for (const sx of [-1, 1]) L.box(0.022, 1.12 - plinth - 0.08, 0.02, sx * (iw / 2 - 0.0), 0.035, -0.01, 'gasket');
+      for (const y of [0.035, 1.12 - plinth - 0.067]) L.box(iw + 0.022, 0.022, 0.02, 0, y, -0.01, 'gasket');
+      for (const y of [0.25, 0.6]) { L.box(iw - 0.08, 0.05, 0.01, 0, y, -0.08, 'freezer_tray'); L.box(iw - 0.08, 0.006, 0.07, 0, y, -0.047, 'freezer_in'); for (let k = 0; k < 4; k++) L.rbox(0.1, 0.055 + (k % 2) * 0.02, 0.05, 0.01, -iw / 2 + 0.11 + k * 0.13, y + 0.006, -0.048, ['frost1', 'pack4', 'frost2', 'carton'][k], 0, 2); }
+    },
+  });
+  CW.hinged(fc.sub(0, 1.12, 0), cw - 0.004, 'R', (L) => { L.box(cw - 0.004, up1 - 1.12 - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.7, 0.02, -cw / 2 + 0.05, 0.08, 0.03, 'brass'); }, {
+    back: (L) => {
+      L.box(iw - 0.02, up1 - 1.2, 0.012, 0, 0.04, -0.006, 'fridge_in');
       for (const [i, y] of [0.12, 0.5, 0.88, 1.24].entries()) {
-        L.box(0.5, 0.07, 0.012, 0, y, -0.1, 'glass_cup'); L.box(0.5, 0.008, 0.09, 0, y, -0.057, 'fridge_in');
+        L.box(iw - 0.06, 0.07, 0.012, 0, y, -0.1, 'glass_cup'); L.box(iw - 0.06, 0.008, 0.09, 0, y, -0.057, 'fridge_in');
         if (i === 0) { CW.bottle(L, -0.16, y + 0.008, -0.056, 'bottle_green', 0.85); CW.bottle(L, -0.08, y + 0.008, -0.056, 'bottle_amber', 0.8); CW.carton(L, 0.04, y + 0.008, -0.056, 'carton', 0.2); CW.carton(L, 0.13, y + 0.008, -0.056, 'pack3', 0.2); }
         else if (i === 1) { for (let k = 0; k < 6; k++) CW.bottle(L, -0.2 + k * 0.075, y + 0.008, -0.056, ['food_red', 'bottle_oil', 'food_yellow', 'ceramic', 'food_green', 'pack2'][k], 0.5); }
         else if (i === 2) { for (let k = 0; k < 10; k++) L.sphere(0.02, -0.2 + k * 0.045, y + 0.03, -0.056, 'carton', 10, 1.3); }
@@ -228,15 +250,22 @@ function girls(B, W) {
   W.cyl(0.2, 0.2, 0.08, 2.2, 0.38, 0.63, 'armchair_girls', 28); W.cyl(0.18, 0.18, 0.38, 2.2, 0.012, 0.63, 'linen_white', 28);
   // nightstand + lamp (south of bed)
   const ns = W.sub(2.71, 0.012, 3.2, -HP);
-  ns.rbox(0.56, 0.55, 0.4, 0.01, 0, 0.12, 0, 'wood_dark', 0, 2);
+  const nf = ns.sub(0, 0.12, 0.2); // front plane of the cabinet body
+  CW.carcass(nf, 0.56, 0.55, 0.4, 'wood_dark', { shelves: [0.385] });
   for (const sx of [-0.25, 0.25]) for (const sz of [-0.16, 0.16]) ns.cyl(0.014, 0.01, 0.12, sx, 0, sz, 'wood_dark', 8);
-  ns.box(0.5, 0.004, 0.005, 0, 0.42, 0.2, 'gilt'); ns.sphere(0.012, 0, 0.5, 0.205, 'gilt', 8);
+  CW.drawer(nf.sub(0, 0.403, 0), 0.524, 0.128, 0.34, (L) => { L.box(0.524, 0.126, 0.02, 0, 0.001, 0.01, 'wood_dark'); L.sphere(0.013, 0, 0.064, 0.028, 'gilt', 10); }, (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, 'makeup', 2), { boxH: 0.08 });
+  CW.hinged(nf.sub(0, 0.004, 0), 0.524, 'R', (L) => { // hinged away from the bed
+    L.box(0.524, 0.378, 0.02, 0, 0, 0.01, 'wood_dark');
+    L.box(0.46, 0.012, 0.006, 0, 0.36, 0.022, 'wood_dark'); L.box(0.46, 0.012, 0.006, 0, 0.018, 0.022, 'wood_dark');
+    L.sphere(0.012, 0, 0.215, 0.026, 'gilt', 10); L.torus(0.026, 0.0045, 0, 0.19, 0.03, 'gilt', 0);
+  });
+  P.books(nf, -0.08, 0.02, -0.2, 0.15); CW.storeBox(nf, 0.06, 0.02, -0.2, 0.18, 0.12, 0.26, 'box_linen');
   P.tableLamp(W, 2.72, 0.682, 3.2, 'girls', 'porcelain');
   P.COLLIDE.push([2.5, 2.92, 2.94, 3.48]);
   // armchair by the window
-  const ac = W.sub(0.76, 0.012, 3.99, HP);
+  const ac = W.sub(0.76, 0.012, 3.86, HP);
   armchairClassic(ac, 'armchair_girls');
-  P.pillow(ac, 0.42, 0.36, 0.14, 0.05, 0.45, -0.18, 'pillow_navy', 0.1, -0.25);
+  P.restPillow(ac, 0.42, 0.36, 0.14, 0.05, 0.54, -0.17, 'pillow_navy', 0.1, -0.25);
   // rug
   P.rug(W.sub(1.6, 0, 2.0), 2.4, 2.6, 'rug_girls');
   // wardrobe along south wall, 5 modules, arched panel doors, facing north
@@ -269,11 +298,12 @@ function bedClassic(F, w, l, mat, style) {
   F.rbox(w + 0.12, 0.35, 0.04, 0.02, 0, 0.27, l / 2 - 0.0, 'linen_white', 0, 2);
   for (const s of [-1, 1]) F.rbox(0.03, 0.3, l * 0.72, 0.015, s * (w / 2 + 0.05), 0.3, l * 0.13, 'linen_white', 0, 2);
   // pillows
-  P.pillow(F, 0.62, 0.45, 0.16, -0.36, 0.6, -l / 2 + 0.2, 'pillow_white', 0, -0.9);
-  P.pillow(F, 0.62, 0.45, 0.16, 0.36, 0.6, -l / 2 + 0.2, 'pillow_white', 0, -0.9);
-  P.pillow(F, 0.5, 0.4, 0.15, -0.25, 0.62, -l / 2 + 0.33, 'pillow_stripe', 0.05, -0.6);
-  P.pillow(F, 0.5, 0.4, 0.15, 0.25, 0.62, -l / 2 + 0.33, 'pillow_stripe', -0.05, -0.6);
-  P.pillow(F, 0.36, 0.3, 0.13, 0, 0.62, -l / 2 + 0.45, 'pillow_navy', 0, -0.5);
+  const mt = 0.58; // mattress top
+  P.restPillow(F, 0.62, 0.45, 0.16, -0.36, mt, -l / 2 + 0.2, 'pillow_white', 0, -0.9);
+  P.restPillow(F, 0.62, 0.45, 0.16, 0.36, mt, -l / 2 + 0.2, 'pillow_white', 0, -0.9);
+  P.restPillow(F, 0.5, 0.4, 0.15, -0.25, mt, -l / 2 + 0.38, 'pillow_stripe', 0.05, -0.6);
+  P.restPillow(F, 0.5, 0.4, 0.15, 0.25, mt, -l / 2 + 0.38, 'pillow_stripe', -0.05, -0.6);
+  P.restPillow(F, 0.36, 0.3, 0.13, 0, mt, -l / 2 + 0.52, 'pillow_navy', 0, -0.45);
   P.collide(F, w + 0.1, l + 0.1, 0, -0.03);
 }
 
@@ -283,7 +313,6 @@ function armchairClassic(F, mat) {
   const b = F.sub(0, 0.38, -0.32, 0, -0.1); b.rbox(0.82, 0.5, 0.16, 0.06, 0, 0, 0, mat, 0, 4);
   for (const s of [-1, 1]) F.rbox(0.12, 0.34, 0.78, 0.05, s * 0.36, 0.38, 0, mat, 0, 4);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) F.cyl(0.014, 0.018, 0.12, sx * 0.36, 0, sz * 0.33, 'wood_dark', 8);
-  F.tube([[-0.41, 0.72, 0.39], [-0.41, 0.72, -0.38], [0.41, 0.88, -0.4], [0.41, 0.72, -0.38], [0.41, 0.72, 0.39]], 0.006, 'wood_dark', 30, false, 4);
   P.collide(F, 0.82, 0.8);
 }
 
@@ -335,21 +364,34 @@ function boy(B, W) {
   bd.rbox(0.14, 0.5, 2.1, 0.06, 0.55, 0.3, 0, 'bed_boy', 0, 4);  // side back along wall
   bd.rbox(1.08, 0.07, 1.2, 0.03, -0.03, 0.55, 0.35, 'throw_boy', 0, 4); // quilted throw
   for (let i = 0; i < 5; i++) bd.box(1.06, 0.004, 0.006, -0.03, 0.62, -0.2 + i * 0.22, 'throw_boy');
-  P.pillow(bd, 0.5, 0.4, 0.16, -0.18, 0.55, -0.82, 'throw_boy', 0, -0.4);
-  P.pillow(bd, 0.4, 0.34, 0.14, 0.18, 0.55, -0.78, 'leather', 0, -0.4);
+  P.restPillow(bd, 0.5, 0.4, 0.16, -0.18, 0.57, -0.84, 'throw_boy', 0, -0.4);
+  P.restPillow(bd, 0.4, 0.34, 0.14, 0.18, 0.57, -0.8, 'leather', 0, -0.4);
   P.collide(bd, 1.25, 2.15);
   // wardrobe (dark oak) 4.18..5.65 at z 3.48..4.06 facing north
   const wdF = W.sub(4.915, 0.012, 3.48, PI);
   // in this frame local +x -> world -x ; open lit shelves on the west end (local +x side)
-  CW.carcass(wdF.sub(0, 0, -0.01), 1.47, 2.79, 0.56, 'oak_dark', { parts: [0.274] });
-  CW.hinged(wdF.sub(-0.485, 0, 0), 0.5, 'L', (L) => P.shakerDoor(L, 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'R', handleType: 'long', frame: 0.07 }));
-  CW.hinged(wdF.sub(0.015, 0, 0), 0.5, 'R', (L) => P.shakerDoor(L, 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'L', handleType: 'long', frame: 0.07 }));
-  CW.fillSection(wdF, -0.715, 0.255, 0.018, 2.77, -0.29, 0.5, 'hang', ['clothes2', 'clothes4', 'clothes3', 'clothes1', 'throw_boy'], 5);
-  // open shelves (0.4) with LED
-  const os = wdF.sub(0.535, 0, 0);
-  os.box(0.38, 2.7, 0.01, 0, 0.05, -0.55, 'w_boy');
-  for (const y of [0.5, 0.95, 1.4, 1.85, 2.3]) { os.box(0.38, 0.025, 0.5, 0, y, -0.3, 'oak_dark'); os.box(0.36, 0.006, 0.01, 0, y - 0.008, -0.08, 'led'); }
-  P.books(os, -0.05, 0.525, -0.3, 0.1); P.books(os, 0.02, 1.425, -0.3, -0.2); P.vaseGinger(os, 0.05, 0.975, -0.3, 0.4);
+  // sheet 29 (elev. 13): two 500 columns, each split 700 / 1650 / 450, plus a 400 open lit shelf column (black frame)
+  const sp = [0.7, 2.35], ht = 2.79;
+  CW.carcass(wdF.sub(0, 0, -0.01), 1.47, ht, 0.56, 'oak_dark', { parts: [0.274], shelves: sp.map((y) => [y - 0.009, -0.717, 0.265]) });
+  const lv = [[0, sp[0]], [sp[0], sp[1]], [sp[1], ht]];
+  for (const [y0, y1] of lv) {
+    const hd = y1 - y0 - 0.004, hy = y1 - y0 > 1 ? 'long' : 'pull';
+    CW.hinged(wdF.sub(-0.485, y0 + 0.002, 0), 0.5, 'L', (L) => P.shakerDoor(L, 0.5, hd, 'oak_dark', { handle: y0 === sp[0] ? 'black' : null, handleSide: 'R', handleType: hy, frame: 0.07 }));
+    CW.hinged(wdF.sub(0.015, y0 + 0.002, 0), 0.5, 'R', (L) => P.shakerDoor(L, 0.5, hd, 'oak_dark', { handle: y0 === sp[0] ? 'black' : null, handleSide: 'L', handleType: hy, frame: 0.07 }));
+  }
+  const bpal = ['clothes2', 'clothes4', 'clothes3', 'clothes1', 'throw_boy'];
+  CW.fillSection(wdF, -0.715, 0.255, sp[0] + 0.009, sp[1] - 0.009, -0.29, 0.5, 'hang', bpal, 5);
+  for (let i = 0; i < 3; i++) CW.folded(wdF, -0.55 + i * 0.32, 0.018, -0.29, 3 + (i % 2) * 2, bpal, 40 + i);
+  for (let i = 0; i < 3; i++) CW.storeBox(wdF, -0.69 + i * 0.32, sp[1] + 0.009, -0.29, 0.28, 0.3, 0.42, i === 1 ? 'pack1' : 'box_linen');
+  // open shelves between partition (0.283) and side (0.717): back panel, black frame, 5 shelves with LED
+  const ox0 = 0.283, ox1 = 0.717, ow = ox1 - ox0, os = wdF.sub((ox0 + ox1) / 2, 0, 0);
+  os.box(ow, ht - 0.036, 0.008, 0, 0.018, -0.558, 'w_boy');
+  os.box(ow + 0.02, 0.02, 0.02, 0, 0.0, -0.01, 'black'); os.box(ow + 0.02, 0.02, 0.02, 0, ht - 0.02, -0.01, 'black');
+  for (const sx of [-1, 1]) os.box(0.02, ht, 0.02, sx * (ow / 2 + 0.0), 0, -0.01, 'black');
+  const shelvesY = [0.47, 0.94, 1.41, 1.88, 2.35];
+  for (const y of shelvesY) { os.box(ow, 0.025, 0.54, 0, y, -0.29, 'oak_dark'); os.box(ow - 0.04, 0.006, 0.01, 0, y - 0.008, -0.06, 'led'); }
+  P.books(os, -0.05, 0.495, -0.3, 0.1); P.books(os, 0.02, 1.435, -0.3, -0.2); P.vaseGinger(os, 0.05, 0.965, -0.3, 0.4);
+  P.books(os, 0.0, 1.905, -0.3, 0.3); CW.storeBox(os, -0.15, 2.375, -0.3, 0.3, 0.2, 0.3, 'box_linen');
   // rug & chandelier
   P.rug(W.sub(4.2, 0, 1.75), 1.9, 2.4, 'rug_boy');
   P.linearChandelier(W, 4.3, 1.7, 'boy');
@@ -362,10 +404,10 @@ function bedroom(B, W) {
   const panelsS = [[0.22, 0.72], [3.48, 3.94]];
   for (const [x0, x1] of panelsS) { wallFrame(B, 'trim', 0, 8.49, 1, 0, 0, -1, x0, x1, 0.25, 0.85); wallFrame(B, 'trim', 0, 8.49, 1, 0, 0, -1, x0, x1, 1.0, 2.45); }
   wallFrame(B, 'trim', 0, 8.49, 1, 0, 0, -1, 0.82, 3.38, 1.42, 2.45);
-  for (const [z0, z1] of [[5.75, 6.4], [7.7, 8.35]]) { wallFrame(B, 'trim', 4.0, 0, 0, 1, -1, 0, z0, z1, 0.25, 0.85); wallFrame(B, 'trim', 4.0, 0, 0, 1, -1, 0, z0, z1, 1.0, 2.45); }
+  for (const [z0, z1] of [[5.75, 6.26], [7.84, 8.35]]) { wallFrame(B, 'trim', 4.0, 0, 0, 1, -1, 0, z0, z1, 0.25, 0.85); wallFrame(B, 'trim', 4.0, 0, 0, 1, -1, 0, z0, z1, 1.0, 2.45); }
   for (const [x0, x1] of [[0.3, 0.85], [2.45, 2.95]]) { wallFrame(B, 'trim', 0, 5.6, 1, 0, 0, 1, x0, x1, 0.25, 0.85); wallFrame(B, 'trim', 0, 5.6, 1, 0, 0, 1, x0, x1, 1.0, 2.45); }
   wallFrame(B, 'trim', 0, 5.6, 1, 0, 0, 1, 0.95, 2.35, 1.0, 2.45);
-  frieze(B, [[0.15, 8.49], [4.0, 8.49], [4.0, 5.6], [0.15, 5.6]], 2.58);
+  frieze(B, [[0.15, 8.49], [4.0, 8.49], [4.0, 7.73]], 2.58); frieze(B, [[4.0, 6.36], [4.0, 5.6], [0.15, 5.6]], 2.58); // broken over the arch casing
   // headboard panel 2.6 wide, channel tufted
   const hb = W.sub(2.1, 0.012, 8.47, PI);
   for (let i = 0; i < 9; i++) hb.rbox(0.285, 1.25, 0.09, 0.04, -1.3 + 0.145 + i * 0.289, 0.0, 0.045, 'headboard_bed', 0, 4);
@@ -393,7 +435,8 @@ function bedroom(B, W) {
   // rug, chandelier, drapery in arch
   P.rug(W.sub(2.1, 0, 7.15), 2.7, 2.5, 'rug_bed');
   P.rosette(W, 2.1, 7.05, 0.32); P.tieredChandelier(W, 2.1, 7.05, 'bed');
-  P.curtain(B, 3.985, 6.56, 3.985, 6.92, 'cur_bed', 2.42, 0.01, 0.035);
+  // curtain on a rod above the wardrobe arch (bedroom side); click gathers it toward the south (bed) side
+  CW.slidingCurtain({ x0: 3.975, z0: 8.02, x1: 3.975, z1: 6.36, nx: -1, nz: 0, y0: 0.012, y1: 2.7, mat: 'cur_bed', stack: 0.32 });
   radiator(W, 'W', 5.82, 8.08);
 }
 
@@ -430,7 +473,7 @@ function wardrobeRoom(B, W) {
 function hall(B, W) {
   // corridor west wall: dark oak cladding with grooves (x = 7.85 .. 7.87)
   W.box(0.02, 2.8, 1.79, 7.86, 0, 6.495, 'oak_dark');
-  for (let z = 5.6 + 0.3; z < 7.39; z += 0.3) W.box(0.004, 2.8, 0.006, 7.871, 0, z, 'black');
+  for (let z = 5.6 + 0.12; z < 7.38; z += 0.12) W.box(0.003, 2.8, 0.004, 7.8705, 0, z, 'oak_dark');
   // hidden door: oak strip above to cornice
   W.box(0.02, 2.8 - 2.43, 0.84, 9.2, 2.43, 6.31, 'oak_dark');
   // dark oak wardrobe in niche (x 7.18..7.85, z 7.39..8.49), facing east

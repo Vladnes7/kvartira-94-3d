@@ -212,6 +212,17 @@ export async function buildMaterials(renderer, progress) {
     bin1: std({ color: '#d5d3cf', roughness: 0.5 }), bin2: std({ color: '#8d9a8a', roughness: 0.5 }),
     towel_sand: fabricM('weave', '#cdb79a', 1),
     frost1: std({ color: '#c8dbe6', roughness: 0.4 }), frost2: std({ color: '#e6d9c4', roughness: 0.5 }),
+    // oven & freezer
+    oven_in: std({ color: '#26272a', roughness: 0.35, metalness: 0.2 }),
+    oven_glass: std({ color: '#1a1714', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.42, depthWrite: false }),
+    oven_lamp: new THREE.MeshBasicMaterial({ color: '#ffcf8a' }),
+    roast: std({ color: '#9c5a22', roughness: 0.32 }), roast_dark: std({ color: '#6b3814', roughness: 0.38 }),
+    tray: std({ color: '#3a3b3e', roughness: 0.25, metalness: 0.6 }),
+    freezer_in: std({ color: '#eef4f8', roughness: 0.3, emissive: '#e8f2ff', emissiveIntensity: 0.14 }),
+    freezer_tray: std({ color: '#e9f1f6', roughness: 0.15, transparent: true, opacity: 0.55, depthWrite: false }),
+    frost_ice: std({ color: '#dfeef7', roughness: 0.6 }),
+    gasket: std({ color: '#b8bcbf', roughness: 0.7 }),
+    arch_oak: wood('#7a6552', 0.55),
     radiator: std({ color: '#efede9', roughness: 0.45, metalness: 0.2 }),
     socket: std({ color: '#f4f2ee', roughness: 0.4 }),
   });

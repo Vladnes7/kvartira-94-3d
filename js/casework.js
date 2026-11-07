@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Batch, Frame } from './geom.js';
 import { shakerDoor, archPanelDoor, collide } from './pieces.js';
+import { MAT } from './materials.js';
 
 export const MOVERS = [];   // { kind: 'hinge'|'drawer', inner, meshes, inside, open, target, max, sign }
 let ROOT = null;
@@ -13,9 +14,9 @@ const HP = Math.PI / 2;
 const rnd = (s) => { const x = Math.sin(s * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const pick = (arr, s) => arr[Math.floor(rnd(s) * arr.length) % arr.length];
 
-function attach(F, offX) {
+function attach(F, offX, offZ = 0) {
   const outer = new THREE.Group(); outer.name = 'mover';
-  F.M.clone().multiply(new THREE.Matrix4().makeTranslation(offX, 0, 0)).decompose(outer.position, outer.quaternion, outer.scale);
+  F.M.clone().multiply(new THREE.Matrix4().makeTranslation(offX, 0, offZ)).decompose(outer.position, outer.quaternion, outer.scale);
   const inner = new THREE.Group(); outer.add(inner); ROOT.add(outer);
   return inner;
 }
@@ -23,13 +24,31 @@ function register(m) { for (const me of m.meshes) me.userData.mover = m; for (co
 
 // Hinged leaf. hinge: 'L' | 'R' = local side of the hinge. draw(L) draws the leaf like shakerDoor (origin bottom-centre).
 // back(L) optionally draws things fixed to the inside of the leaf (fridge door bins), z < 0.
-export function hinged(F, w, hinge, draw, { angle = 1.65, back } = {}) {
+// Max swing is kept below 90° so a leaf hinged next to a wall or a neighbouring unit never cuts into it.
+// The pivot sits on the leaf's front face (pz), like a real cabinet hinge, so the leaf swings forward and away
+// from the side wall instead of its thickness cutting into it.
+export function hinged(F, w, hinge, draw, { angle = 1.5, back, pz = 0.02 } = {}) {
   const hx = hinge === 'L' ? -w / 2 : w / 2;
-  const inner = attach(F, hx);
-  const B = new Batch(); const L = new Frame(B, new THREE.Matrix4().makeTranslation(-hx, 0, 0));
+  const inner = attach(F, hx, pz);
+  const B = new Batch(); const L = new Frame(B, new THREE.Matrix4().makeTranslation(-hx, 0, -pz));
   draw(L); if (back) back(L);
   const meshes = B.build(inner, { name: 'leaf' });
-  return register({ kind: 'hinge', inner, meshes, inside: [], open: 0, target: 0, max: angle, sign: hinge === 'L' ? -1 : 1 });
+  return register({ kind: 'hinge', inner, meshes, inside: [], open: 0, target: 0, max: Math.min(angle, 1.52), sign: hinge === 'L' ? -1 : 1 });
+}
+
+// Drop-down leaf hinged along its bottom edge (oven doors). draw(L): origin bottom-centre of the leaf.
+export function dropDoor(F, w, h, draw, { angle = 1.42 } = {}) {
+  const inner = attach(F, 0);
+  const B = new Batch(); draw(new Frame(B));
+  const meshes = B.build(inner, { name: 'oven-door' });
+  return register({ kind: 'hinge', axis: 'x', inner, meshes, inside: [], open: 0, target: 0, max: angle, sign: 1 });
+}
+
+// Anything else that animates on click: apply(t) is called with t in 0..1.
+export function custom(meshes, apply) {
+  const m = { kind: 'custom', inner: null, meshes, inside: [], open: 0, target: 0, max: 1, sign: 1, apply };
+  apply(0);
+  return register(m);
 }
 
 // Drawer: front drawn by draw(L) (origin bottom-centre of front plane); box + fill(LI, iw, ih, id) move with it.
@@ -90,7 +109,9 @@ export function fillSection(F, x0, x1, y0, y1, z, depth, kind, pal, seed = 0) {
   if (kind === 'hang' || kind === 'coats') {
     const rod = y0 + Math.min(H - 0.42, 1.95);
     F.box(x1 - x0, 0.018, depth, (x0 + x1) / 2, rod + 0.1, z, 'drawer_box'); // hat shelf
-    for (let i = 0; i < 3; i++) storeBox(F, x0 + 0.06 + i * ((x1 - x0) / 3), rod + 0.12, z, Math.min(0.3, (x1 - x0) / 3 - 0.04), 0.22, Math.min(0.4, depth - 0.05), pick(['box_linen', 'pack1', 'box_linen'], seed + i));
+    // three boxes on the hat shelf, kept inside the section (they used to poke through the side panel)
+    const cell = (x1 - x0) / 3, bw = Math.min(0.3, cell - 0.04);
+    for (let i = 0; i < 3; i++) storeBox(F, x0 + i * cell + (cell - bw) / 2, rod + 0.12, z, bw, 0.22, Math.min(0.4, depth - 0.05), pick(['box_linen', 'pack1', 'box_linen'], seed + i));
     hanging(F, x0, x1, rod, z, pal, seed, kind === 'coats' ? { long: 1.1, v: 0.2 } : { long: 1.05, v: 0.5 });
     // shoes on the floor
     for (let x = x0 + 0.12, i = 0; x < x1 - 0.1; x += 0.25, i++) shoes(F, x, y0, z + 0.05, pick(['leather', 'black', 'shoe_light'], seed * 5 + i));
@@ -219,4 +240,119 @@ export function washer(F, label = 'washer') {
   F.cylZ(0.022, 0.006, 0.2, 0.77, 0.006, 'chrome', 20);
   F.torus(0.17, 0.02, 0, 0.4, 0.012, 'chrome', 0);
   F.cylZ(0.16, 0.006, 0, 0.4, 0.004, 'appliance', 40); F.cylZ(0.15, 0.004, 0, 0.4, 0.016, 'glass_cup', 40);
+}
+
+// ------------------------------------------------------------ sliding curtain
+// Pleated curtain on a rod that gathers toward one end on click. Plan line from (x0,z0) = gathered end
+// to (x1,z1) = far end when closed; nx,nz = unit normal pointing away from the wall.
+// The pleats deepen as it gathers (same fabric) and the whole curtain steps off the wall to stay clear of it.
+export function slidingCurtain({ x0, z0, x1, z1, nx, nz, y0 = 0.01, y1 = 2.7, mat = 'cur_bed', stack = 0.3, depth = 0.024, rodY, rodMat = 'brass', rodExtra = 0.06 }) {
+  const Lc = Math.hypot(x1 - x0, z1 - z0), tx = (x1 - x0) / Lc, tz = (z1 - z0) / Lc;
+  const folds = Math.max(4, Math.round(Lc / 0.1)), segU = folds * 6, segV = 8;
+  const n = (segU + 1) * (segV + 1);
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), idx = [];
+  for (let j = 0; j <= segV; j++) for (let i = 0; i <= segU; i++) { const k = j * (segU + 1) + i; uv[k * 2] = (i / segU) * Lc * 1.3; uv[k * 2 + 1] = y0 + (y1 - y0) * (j / segV); }
+  for (let j = 0; j < segV; j++) for (let i = 0; i < segU; i++) { const a = j * (segU + 1) + i, b = a + 1, c = a + segU + 1, d = c + 1; idx.push(a, b, c, b, d, c); }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
+  const mesh = new THREE.Mesh(g, MAT[mat]); mesh.name = 'curtain:' + mat; mesh.castShadow = true; mesh.receiveShadow = true; ROOT.add(mesh);
+  // rod + brackets + finials (static)
+  const ry = rodY ?? y1 + 0.03;
+  const B = new Batch(); const W = new Frame(B);
+  const ax = x0 - tx * rodExtra, az = z0 - tz * rodExtra, bx = x1 + tx * rodExtra, bz = z1 + tz * rodExtra;
+  const rodOff = depth * 2.2 + 0.012;
+  const rx = (u) => [u[0] + nx * rodOff, u[1] + nz * rodOff];
+  const [ra, rza] = rx([ax, az]), [rb, rzb] = rx([bx, bz]);
+  W.tube([[ra, ry, rza], [rb, ry, rzb]], 0.011, rodMat, 4, false, 12);
+  for (const [px, pz] of [[ra, rza], [rb, rzb]]) W.sphere(0.022, px, ry, pz, rodMat, 14);
+  for (const u of [0.06, Lc * 0.5, Lc - 0.06]) { const px = x0 + tx * u, pz = z0 + tz * u; W.tube([[px - nx * 0.01, ry, pz - nz * 0.01], [px + nx * rodOff, ry, pz + nz * rodOff]], 0.006, rodMat, 2, false, 8); }
+  B.build(ROOT, { name: 'curtain-rod' });
+  // rings ride along with the heading
+  const nR = Math.max(4, Math.round(folds / 1.5));
+  const ringG = new THREE.TorusGeometry(0.02, 0.0035, 6, 18);
+  const rings = []; for (let r = 0; r < nR; r++) { const m = new THREE.Mesh(ringG, MAT[rodMat]); m.rotation.y = Math.atan2(tx, tz); ROOT.add(m); rings.push(m); }
+  const apply = (t) => {
+    const L = Lc * (1 - t) + stack * t;
+    const a = Math.min(depth * Math.sqrt(Lc / L), 0.06);
+    const off = depth * 1.15 + (a - depth); // centre line distance from the wall line
+    for (let j = 0; j <= segV; j++) {
+      const v = j / segV, y = y0 + (y1 - y0) * v;
+      for (let i = 0; i <= segU; i++) {
+        const u = i / segU, s = u * L, k = (j * (segU + 1) + i) * 3;
+        const w = Math.sin(u * folds * Math.PI * 2) * a * (0.88 + 0.12 * v) + Math.sin(u * 7.3 + v * 2) * 0.003;
+        pos[k] = x0 + tx * s + nx * (off + w); pos[k + 1] = y; pos[k + 2] = z0 + tz * s + nz * (off + w);
+      }
+    }
+    g.attributes.position.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
+    for (let r = 0; r < nR; r++) { const s = (r / (nR - 1)) * L; rings[r].position.set(x0 + tx * s + nx * rodOff, ry - 0.012, z0 + tz * s + nz * rodOff); }
+  };
+  return custom([mesh], apply);
+}
+
+// ------------------------------------------------------------ ovens
+// Built-in oven in a tall unit. F: origin bottom-centre of the unit front plane. y0..y0+h is the appliance front.
+// Hollow enamel cavity with a lamp, rack and tray; drop-down glass door; food(L) draws the dish on the tray.
+export function ovenUnit(F, w, y0, h, food, { panel = 0.07 } = {}) {
+  const fw = w - 0.05, D = 0.5;
+  const s = F.sub(0, y0, 0);
+  // stainless/black fascia frame around the cavity opening (part of the appliance body)
+  s.box(fw, panel, 0.03, 0, h - panel, 0.015, 'appliance');                     // control panel
+  s.box(0.1, 0.012, 0.004, -fw / 2 + 0.09, h - panel * 0.62, 0.031, 'led');      // display
+  for (const dx of [fw / 2 - 0.16, fw / 2 - 0.07]) s.cylZ(0.016, 0.02, dx, h - panel / 2, 0.04, 'steel', 20);
+  const ch = h - panel, cw = fw - 0.06;
+  s.box(fw, ch, 0.008, 0, 0, -D, 'appliance');                                   // body back
+  s.box(0.03, ch, D, -fw / 2 + 0.015, 0, -D / 2, 'appliance'); s.box(0.03, ch, D, fw / 2 - 0.015, 0, -D / 2, 'appliance');
+  s.box(fw, 0.02, D, 0, 0, -D / 2, 'appliance'); s.box(fw, 0.02, D, 0, ch - 0.02, -D / 2, 'appliance');
+  // enamel cavity liner
+  const ci = s.sub(0, 0.035, -0.02);
+  const ih = ch - 0.07, id = D - 0.06;
+  ci.box(cw, ih, 0.006, 0, 0, -id, 'oven_in'); ci.box(cw, 0.006, id, 0, 0, -id / 2, 'oven_in'); ci.box(cw, 0.006, id, 0, ih - 0.006, -id / 2, 'oven_in');
+  ci.box(0.006, ih, id, -cw / 2, 0, -id / 2, 'oven_in'); ci.box(0.006, ih, id, cw / 2, 0, -id / 2, 'oven_in');
+  // shelf runners on both sides
+  for (let y = 0.07; y < ih - 0.05; y += 0.07) for (const sx of [-1, 1]) ci.box(0.01, 0.006, id - 0.04, sx * (cw / 2 - 0.008), y, -id / 2, 'steel');
+  ci.sphere(0.018, cw / 2 - 0.05, ih - 0.04, -id + 0.02, 'oven_lamp', 12);       // lamp (stays lit)
+  // wire rack + tray at ~1/3 height
+  const ry = Math.min(0.14, ih * 0.3);
+  for (let k = 0; k < 9; k++) ci.cylZ(0.003, id - 0.05, -cw / 2 + 0.03 + k * (cw - 0.06) / 8, ry, -id / 2, 'chrome', 6);
+  ci.cylX(0.004, cw - 0.02, 0, ry, -0.03, 'chrome', 6); ci.cylX(0.004, cw - 0.02, 0, ry, -id + 0.03, 'chrome', 6);
+  const tw = cw - 0.08, td = id - 0.09;
+  ci.box(tw, 0.006, td, 0, ry + 0.004, -id / 2, 'tray');
+  for (const sz of [-1, 1]) ci.box(tw, 0.025, 0.006, 0, ry + 0.004, -id / 2 + sz * td / 2, 'tray');
+  for (const sx of [-1, 1]) ci.box(0.006, 0.025, td, sx * tw / 2, ry + 0.004, -id / 2, 'tray');
+  if (food) food(ci.sub(0, ry + 0.01, -id / 2), tw, ih - ry - 0.04);
+  // door: black glass, steel bar handle along the top, inner window shows the cavity
+  dropDoor(s.sub(0, 0, 0.0), fw, ch, (L) => {
+    const fr = 0.05;
+    L.box(fw, fr, 0.03, 0, 0, 0.015, 'appliance'); L.box(fw, fr * 1.2, 0.03, 0, ch - fr * 1.2, 0.015, 'appliance');
+    L.box(fr, ch - fr * 2.2, 0.03, -fw / 2 + fr / 2, fr, 0.015, 'appliance'); L.box(fr, ch - fr * 2.2, 0.03, fw / 2 - fr / 2, fr, 0.015, 'appliance');
+    L.box(fw - fr * 2, ch - fr * 2.2, 0.004, 0, fr, 0.028, 'oven_glass'); L.box(fw - fr * 2, ch - fr * 2.2, 0.004, 0, fr, 0.004, 'oven_glass');
+    L.box(fw - 0.08, 0.022, 0.022, 0, ch - 0.06, 0.07, 'steel');
+    for (const sx of [-1, 1]) L.box(0.016, 0.016, 0.045, sx * (fw / 2 - 0.06), ch - 0.057, 0.045, 'steel');
+  });
+}
+
+// Roast bird on a tray. F: origin on the tray floor centre; w = tray width, hMax = headroom.
+export function roastBird(F, w, hMax, big = true) {
+  const s = big ? 1 : 0.72, sc = Math.min(1, (hMax - 0.02) / (0.16 * s));
+  const k = s * Math.max(0.55, sc);
+  const ell = (rx, ry, rz, x, y, z, mat, rotX = 0, rotY = 0, rotZ = 0) => F.add(new THREE.SphereGeometry(1, 22, 14), mat, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, rotY, rotZ)), new THREE.Vector3(rx, ry, rz)));
+  // body (breast up) + back
+  ell(0.13 * k, 0.085 * k, 0.1 * k, 0, 0.075 * k, 0, 'roast');
+  ell(0.11 * k, 0.05 * k, 0.085 * k, -0.01 * k, 0.04 * k, 0, 'roast');
+  // drumsticks with bone tips (pointing forward-left/right)
+  for (const sz of [-1, 1]) {
+    ell(0.075 * k, 0.04 * k, 0.04 * k, 0.1 * k, 0.07 * k, sz * 0.06 * k, 'roast', 0, -sz * 0.35, -0.25);
+    F.add(new THREE.CylinderGeometry(0.008 * k, 0.01 * k, 0.05 * k, 8), 'ceramic', new THREE.Matrix4().compose(new THREE.Vector3(0.18 * k, 0.082 * k, sz * 0.085 * k), new THREE.Quaternion().setFromEuler(new THREE.Euler(sz * 0.3, 0, -1.3)), new THREE.Vector3(1, 1, 1)));
+    ell(0.05 * k, 0.022 * k, 0.03 * k, -0.04 * k, 0.07 * k, sz * 0.095 * k, 'roast', sz * 0.3);  // wings
+  }
+  // vegetables and herbs around
+  const R = (i) => Math.sin(i * 12.9898 + (big ? 1 : 7)) * 0.5 + 0.5;
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2, rr = (0.17 + R(i) * 0.03) * k * 1.05;
+    const x = Math.cos(a) * rr * 1.25, z = Math.sin(a) * rr * 0.9;
+    if (Math.abs(x) > w / 2 - 0.03) continue;
+    const mat = ['food_yellow', 'food_orange', 'food_yellow', 'roast', 'food_red'][i % 5];
+    ell(0.022 * s, 0.017 * s, 0.02 * s, x, 0.014 * s, z, mat, 0, a);
+  }
+  for (let i = 0; i < 6; i++) ell(0.018 * s, 0.004, 0.008 * s, (R(i + 20) - 0.5) * 0.2 * k, 0.15 * k * (0.85 + R(i) * 0.1), (R(i + 30) - 0.5) * 0.1 * k, 'food_green', 0, R(i) * 3);
 }

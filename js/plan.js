@@ -482,28 +482,37 @@ function archOpening(root, o, R, portal = false) {
   // casing-like trim around arch on both faces
   const F = new Frame(B);
   if (!portal) {
-    for (const side of [1, -1]) {
-      const pts = [];
-      pts.push([0, 0]); pts.push([0, spring]);
-      for (let k = 0; k <= 24; k++) { const a = Math.PI - (k / 24) * Math.PI; pts.push([W / 2 + Math.cos(a) * rx, spring + Math.sin(a) * ry]); }
-      pts.push([W, 0]);
-      for (let k = 0; k < pts.length - 1; k++) {
-        const [u0, v0] = pts[k], [u1, v1] = pts[k + 1];
-        const L = Math.hypot(u1 - u0, v1 - v0); if (L < 1e-4) continue;
-        const um = (u0 + u1) / 2, vm = (v0 + v1) / 2;
-        const ang = Math.atan2(v1 - v0, u1 - u0);
-        const nOff = side * (th / 2 + 8) * S;
-        // outward offset of the trim from opening edge (away from opening centre)
-        const ox2 = -Math.sin(ang) * 0.04, oy2 = Math.cos(ang) * 0.04;
-        const sgn = (um - W / 2) * ox2 + (vm - spring) * oy2 > 0 || k < 2 ? 1 : -1;
-        const cu = um + ox2 * sgn * (k < 2 ? -1 : 1), cv = vm + oy2 * sgn * (k < 2 ? -1 : 1);
-        const [wx, wz] = P(o.a + cu * 1000, nOff * 1000);
-        const g2 = planarUV(new THREE.BoxGeometry(L + 0.004, 0.07, 0.018));
-        const ry = o.axis === 'y' ? 0 : -Math.PI / 2;
-        B.add(g2, 'trim', mat4(wx, cv, wz, ry, 0, 0).multiply(new THREE.Matrix4().makeRotationZ(ang)));
-      }
-    }
-  } else {
+    // Sheets 31/32: solid oak casing 132 mm wide on both faces + oak lining on the reveal (no plaster edge).
+    const cw = 0.132, lin = 0.012, ct = 0.02, seg = 48;
+    const arc = (ox, oy, inset, reverse) => {
+      const pts = []; for (let k = 0; k <= seg; k++) { const a = Math.PI - (k / seg) * Math.PI; pts.push([W / 2 + Math.cos(a) * (rx + ox), spring + Math.sin(a) * (ry + oy)]); }
+      return reverse ? pts.reverse() : pts;
+    };
+    // U-shaped band between an outer outline (offset `out`) and an inner one (offset `inn`), both following the opening
+    const band = (out, inn) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-out, 0); sh.lineTo(-out, spring);
+      for (const [u, v] of arc(out, out)) sh.lineTo(u, v);
+      sh.lineTo(W + out, 0); sh.lineTo(W - inn, 0); sh.lineTo(W - inn, spring);
+      for (const [u, v] of arc(-inn, -inn, 0, true)) sh.lineTo(u, v);
+      sh.lineTo(inn, spring); sh.lineTo(inn, 0); sh.lineTo(-out, 0);
+      return sh;
+    };
+    // local frame: x = along span from o.a, y = up, z = across the wall; proper rotation (no mirroring)
+    const place = (sh, z0, depth) => {
+      const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false, curveSegments: 4 });
+      g.translate(0, 0, z0); planarUV(g);
+      let M;
+      if (o.axis === 'y') { const [x0, z00] = P(o.a, -th / 2); M = new THREE.Matrix4().makeTranslation(x0, 0, z00); }
+      else { const [x0, z00] = P(o.a, th / 2); M = new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(x0, 0, z00); }
+      g.applyMatrix4(M); B.add(g, 'arch_oak');
+    };
+    const T = th * S;
+    place(band(cw, 0), -ct, ct);                 // casing, first face
+    place(band(cw, 0), T, ct);                   // casing, second face
+    place(band(0, lin), -0.002, T + 0.004);      // reveal lining
+  }
+  else {
     // black metal portal following arch, inner sidelight bars, ornament
     const steel = 'black';
     const inset = 0.03, bw = 0.045;

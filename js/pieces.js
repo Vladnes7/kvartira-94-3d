@@ -48,7 +48,7 @@ export function curtain(B, x0, z0, x1, z1, mat, y1 = 3.08, y0 = 0.01, depth = 0.
   B.add(g, mat);
 }
 
-export function pillow(F, w, h, t, x, y, z, mat, ry = 0, tilt = -0.25) {
+function pillowGeo(w, h, t) {
   const g = planarUV(new THREE.SphereGeometry(0.5, 24, 16));
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -60,7 +60,17 @@ export function pillow(F, w, h, t, x, y, z, mat, ry = 0, tilt = -0.25) {
     p.setXYZ(i, X * w, Y * h, Z * t);
   }
   g.computeVertexNormals();
-  F.add(g, mat, mat4(x, y + h / 2, z, ry, tilt));
+  return g;
+}
+export function pillow(F, w, h, t, x, y, z, mat, ry = 0, tilt = -0.25) {
+  F.add(pillowGeo(w, h, t), mat, mat4(x, y + h / 2, z, ry, tilt));
+}
+// Pillow resting on a surface at height `top` (sinks in slightly) instead of a guessed centre height.
+export function restPillow(F, w, h, t, x, top, z, mat, ry = 0, tilt = -0.25, sink = 0.015) {
+  const g = pillowGeo(w, h, t);
+  const rot = mat4(0, 0, 0, ry, tilt);
+  const probe = g.clone().applyMatrix4(rot); probe.computeBoundingBox();
+  F.add(g, mat, mat4(x, top - sink - probe.boundingBox.min.y, z, ry, tilt));
 }
 
 // ---------- seating ----------
@@ -111,7 +121,7 @@ export function armchair(F, { fabric = 'armchair', wood = 'wood_dark', pillowMat
     F.box(0.035, 0.6, 0.035, x, 0.2, -0.33, wood);
     F.box(0.03, 0.03, D - 0.1, x, 0.3, 0.0, wood);
   }
-  pillow(F, 0.46, 0.4, 0.14, 0, 0.42, -0.18, pillowMat, 0, -0.2);
+  restPillow(F, 0.46, 0.4, 0.14, 0, 0.42, -0.16, pillowMat, 0, -0.2);
   collide(F, W, D);
 }
 
@@ -120,8 +130,6 @@ export function chairBoucle(F, { fabric = 'chair_boucle', frame = 'black' } = {}
   F.rbox(0.5, 0.09, 0.48, 0.04, 0, 0.42, 0.01, fabric, 0, 4);
   const b = F.sub(0, 0.5, -0.2, 0, -0.08);
   b.rbox(0.5, 0.36, 0.08, 0.04, 0, 0, 0, fabric, 0, 4);
-  // back loop
-  F.box(0.014, 0.42, 0.014, -0.06, 0.48, -0.25, frame); F.box(0.014, 0.42, 0.014, 0.06, 0.48, -0.25, frame);
 }
 
 export function officeChair(F, mat = 'leather') {
