@@ -2,11 +2,13 @@
 import * as THREE from 'three';
 import { Batch, Frame, mat4, sweep, wallFrame, PROFILES, planarUV } from './geom.js';
 import * as P from './pieces.js';
+import * as CW from './casework.js';
 
 const HP = Math.PI / 2, PI = Math.PI;
 
 export function buildRooms(scene) {
   const group = new THREE.Group(); group.name = 'furniture'; scene.add(group);
+  CW.setRoot(group);
   const B = new Batch();
   const W = new Frame(B);
   living(B, W); kitchen(B, W); girls(B, W); boy(B, W); bedroom(B, W); wardrobeRoom(B, W); hall(B, W); bath(B, W); wc(B, W);
@@ -66,42 +68,60 @@ function kitchen(B, W) {
   // East run: origin at front line x=10.65, facing west; local x = world z
   const E = W.sub(10.65, 0, 0, -HP);
   const top = 0.85, base = 0.82, plinth = 0.1, up0 = 1.40, up1 = 2.80, upD = 0.35;
-  // ---- tall units (dark oak) 0.25..1.45
+  const pull = (side, frame = 0.055) => ({ handle: 'black', handleSide: side, handleType: 'pull', frame });
+  const fill = (kind, seed = 0) => (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, kind, seed);
+  // ---- tall units (dark oak) 0.25..1.45, hollow with opening fronts
   const tall = (F, u0, u1, kind) => {
     const w = u1 - u0, c = (u0 + u1) / 2;
-    F.box(w, up1, 0.58, c, 0, -0.3, 'k_tall');
     const s = F.sub(c, 0, 0);
+    s.box(w - 0.004, plinth, 0.019, 0, 0, -0.05, 'black');
     if (kind === 'oven') {
-      s.box(w - 0.004, 0.75, 0.019, 0, 0.1, 0.0095, 'k_tall');
+      CW.carcass(s.sub(0, 0, -0.01), w, up1, 0.57, 'k_tall', { bottom: false, shelves: [plinth, 0.85, 2.38] });
+      s.box(w - 0.036, 1.96 - 0.868, 0.54, 0, 0.868, -0.3, 'k_tall'); // appliance housing
       s.box(w - 0.05, 0.58, 0.03, 0, 0.88, 0.0, 'appliance'); s.box(w - 0.1, 0.03, 0.03, 0, 1.4, 0.02, 'steel'); s.box(w - 0.14, 0.32, 0.002, 0, 0.98, 0.016, 'glass_display');
       s.box(w - 0.05, 0.44, 0.03, 0, 1.49, 0.0, 'appliance'); s.box(w - 0.1, 0.025, 0.03, 0, 1.86, 0.02, 'steel');
-      s.box(w - 0.004, up1 - 1.96, 0.019, 0, 1.96, 0.0095, 'k_tall');
+      CW.drawer(s.sub(0, plinth, 0), w, 0.746, 0.5, (L) => L.box(w - 0.004, 0.746, 0.019, 0, 0, 0.0095, 'k_tall'), fill('pots', 2), { boxH: 0.3 });
+      CW.hinged(s.sub(0, 1.96, 0), w, 'L', (L) => L.box(w - 0.004, up1 - 1.96 - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'));
+      CW.kitchenRow(s, -w / 2 + 0.02, w / 2 - 0.02, 1.96, -0.3, 'packs', 3);
+      CW.kitchenRow(s, -w / 2 + 0.02, w / 2 - 0.02, 2.398, -0.3, 'jars', 4);
     } else {
-      s.box(w - 0.004, up1 - plinth - 0.004, 0.019, 0, plinth, 0.0095, 'k_tall');
-      s.box(0.014, 0.7, 0.02, (kind === 'L' ? -1 : 1) * (w / 2 - 0.05), 0.85, 0.03, 'brass');
+      const sh = [plinth, 0.5, 0.9, 1.3, 1.7, 2.1, 2.45];
+      CW.carcass(s.sub(0, 0, -0.01), w, up1, 0.57, 'k_tall', { bottom: false, shelves: sh });
+      CW.hinged(s.sub(0, plinth, 0), w, 'L', (L) => { L.box(w - 0.004, up1 - plinth - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.7, 0.02, w / 2 - 0.05, 0.75, 0.03, 'brass'); });
+      ['packs', 'jars', 'packs', 'jars', 'packs', 'jars'].forEach((k, i) => CW.kitchenRow(s, -w / 2 + 0.02, w / 2 - 0.02, sh[i] + 0.018, -0.3, k, 10 + i));
     }
-    s.box(w, plinth, 0.019, 0, 0, -0.05, 'black');
   };
   tall(E, 0.25, 0.85, 'R');
   tall(E, 0.85, 1.45, 'oven');
-  // ---- base run 1.45..4.07 (and corner)
-  E.box(4.07 - 1.45, plinth, 0.55, (1.45 + 4.07) / 2, 0, -0.33, 'black');
-  E.box(4.07 - 1.45, base - plinth, 0.56, (1.45 + 4.07) / 2, plinth, -0.3, 'k_base');
-  const drawer3 = (F, c, w) => { const s = F.sub(c, plinth, 0); shakerDoor3(s, w, base - plinth); };
-  const shakerDoor3 = (s, w, h) => { const hh = (h - 0.01) / 3; for (let i = 0; i < 3; i++) P.shakerDoor(s.sub(0, i * hh, 0), w, hh - 0.004, 'k_base', { handle: 'black', handleSide: 'C', handleType: 'pull', frame: 0.055 }); };
-  drawer3(E, 1.75, 0.6);
-  { const s = E.sub(2.4, plinth, 0); const h = base - plinth; P.shakerDoor(s, 0.7, h * 0.5 - 0.004, 'k_base', { handle: 'black', handleSide: 'C', handleType: 'pull', frame: 0.055 }); P.shakerDoor(s.sub(0, h * 0.5, 0), 0.7, h * 0.5 - 0.004, 'k_base', { handle: 'black', handleSide: 'C', handleType: 'pull', frame: 0.055 }); }
-  for (const [c, side] of [[2.925, 'R'], [3.275, 'L']]) P.shakerDoor(E.sub(c, plinth, 0), 0.35, base - plinth - 0.004, 'k_base', { handle: 'black', handleSide: side, handleType: 'pull', frame: 0.055 });
-  P.shakerDoor(E.sub(3.76, plinth, 0), 0.62, base - plinth - 0.004, 'k_base', { handle: 'black', handleSide: 'C', handleType: 'pull', frame: 0.055 });
+  // ---- base run 1.45..4.07: hollow carcass with partitions, drawers and doors
+  const bc = (1.45 + 4.07) / 2, bh = base - plinth;
+  E.box(4.07 - 1.45, plinth, 0.55, bc, 0, -0.33, 'black');
+  CW.carcass(E.sub(bc, plinth, -0.02), 4.07 - 1.45, bh, 0.56, 'k_base', { top: false, parts: [2.05 - bc, 2.75 - bc, 3.45 - bc], shelves: [[bh / 2, 2.75 - bc, 3.45 - bc]] });
+  const hh = (bh - 0.01) / 3;
+  ['containers', 'utensils', 'cutlery'].forEach((k, i) => CW.drawer(E.sub(1.75, plinth + i * hh, 0), 0.6, hh - 0.004, 0.5, (L) => P.shakerDoor(L, 0.6, hh - 0.004, 'k_base', pull('C')), fill(k, i)));
+  CW.drawer(E.sub(2.4, plinth, 0), 0.7, bh * 0.5 - 0.004, 0.5, (L) => P.shakerDoor(L, 0.7, bh * 0.5 - 0.004, 'k_base', pull('C')), fill('pots', 5), { boxH: 0.28 });
+  CW.drawer(E.sub(2.4, plinth + bh * 0.5, 0), 0.7, bh * 0.5 - 0.004, 0.5, (L) => P.shakerDoor(L, 0.7, bh * 0.5 - 0.004, 'k_base', pull('C')), fill('utensils', 7));
+  for (const [c, side] of [[2.925, 'R'], [3.275, 'L']]) CW.hinged(E.sub(c, plinth, 0), 0.35, side === 'R' ? 'L' : 'R', (L) => P.shakerDoor(L, 0.35, bh - 0.004, 'k_base', pull(side)));
+  CW.kitchenRow(E, 2.77, 3.43, plinth + 0.018, -0.3, 'plates', 21);
+  CW.kitchenRow(E, 2.77, 3.43, plinth + bh / 2 + 0.018, -0.3, 'packs', 22);
+  CW.drawer(E.sub(3.76, plinth, 0), 0.62, bh - 0.004, 0.5, (L) => P.shakerDoor(L, 0.62, bh - 0.004, 'k_base', pull('C')), fill('bins'), { boxH: 0.42, travel: 0.4 });
   // countertop east incl corner (to u=4.67)
   E.box(4.67 - 1.45, 0.03, 0.62, (1.45 + 4.67) / 2, base, -0.29, 'k_top');
   // splash
   E.box(4.67 - 1.45, up0 - top, 0.02, (1.45 + 4.67) / 2, top, -0.59, 'k_splash');
-  // hob
+  // hob with cookware (pot, kettle, pan)
   E.box(0.6, 0.006, 0.52, 2.4, top, -0.3, 'appliance');
   for (const [dx, dz, r] of [[-0.15, -0.12, 0.09], [0.15, -0.12, 0.07], [-0.15, 0.12, 0.07], [0.15, 0.12, 0.09]]) E.cyl(r, r, 0.001, 2.4 + dx, top + 0.006, -0.3 + dz, 'steel', 32, true);
-  // uppers 1.45..4.07
-  const upCarcass = (u0, u1) => E.box(u1 - u0, up1 - up0, upD - 0.02, (u0 + u1) / 2, up0, -0.6 + upD / 2 - 0.01, 'k_base');
+  CW.pot(E, 2.25, top + 0.007, -0.42, 0.1, 0.13);
+  CW.kettle(E, 2.55, top + 0.007, -0.42);
+  CW.pan(E, 2.25, top + 0.007, -0.18, 0.11, -0.7);
+  // uppers 2.05..3.45 (white, two sections, shelves) with opening doors
+  CW.carcass(E.sub(2.75, up0, -0.27), 1.4, up1 - up0, upD - 0.02, 'k_base', { parts: [0], shelves: [0.45, 0.9] });
+  for (const [c, side] of [[2.225, 'R'], [2.575, 'L'], [2.925, 'R'], [3.275, 'L']]) CW.hinged(E.sub(c, up0, -0.6 + upD), 0.35, side === 'R' ? 'L' : 'R', (L) => P.shakerDoor(L, 0.35, up1 - up0 - 0.004, 'k_base', pull(side, 0.06)), { angle: 1.55 });
+  const uz = -0.6 + upD / 2 - 0.02;
+  CW.kitchenRow(E, 2.07, 2.73, up0 + 0.018, uz, 'plates', 31); CW.kitchenRow(E, 2.07, 2.73, up0 + 0.468, uz, 'plates', 32); CW.kitchenRow(E, 2.07, 2.73, up0 + 0.918, uz, 'jars', 33);
+  CW.kitchenRow(E, 2.77, 3.43, up0 + 0.018, uz, 'glasses', 34); CW.kitchenRow(E, 2.77, 3.43, up0 + 0.468, uz, 'mugs', 35); CW.kitchenRow(E, 2.77, 3.43, up0 + 0.918, uz, 'packs', 36);
+  // glass display units (black frame, porcelain) with opening glass doors
   const glassUnit = (F, u0, u1, back = 'k_tall') => {
     const w = u1 - u0, c = (u0 + u1) / 2, zf = -0.6 + upD;
     F.box(w, up1 - up0, 0.012, c, up0, -0.59, back);
@@ -111,41 +131,73 @@ function kitchen(B, W) {
     F.box(w - 0.04, 0.006, 0.012, c, up1 - 0.04, zf - 0.03, 'led');
     for (const [i, y] of [up0 + 0.02, up0 + 0.458, up0 + 0.908].entries()) P.porcelainSet(F.sub(c, 0, 0), w - 0.04, y, -0.45, i + u0 * 10);
     const dw = w / 2;
-    P.glassCabinetDoor(F.sub(u0 + dw / 2, up0, zf), dw, up1 - up0);
-    P.glassCabinetDoor(F.sub(u1 - dw / 2, up0, zf), dw, up1 - up0);
+    CW.hinged(F.sub(u0 + dw / 2, up0, zf), dw, 'L', (L) => P.glassCabinetDoor(L, dw, up1 - up0), { angle: 1.45 });
+    CW.hinged(F.sub(u1 - dw / 2, up0, zf), dw, 'R', (L) => P.glassCabinetDoor(L, dw, up1 - up0), { angle: 1.45 });
     P.light(F, c, up0 + 1.0, -0.4, 'led', 'living', 0.08);
   };
   glassUnit(E, 1.45, 2.05);
-  upCarcass(2.05, 3.45);
-  for (const [c, side] of [[2.225, 'R'], [2.575, 'L'], [2.925, 'R'], [3.275, 'L']]) P.shakerDoor(E.sub(c, up0, -0.6 + upD), 0.35, up1 - up0 - 0.004, 'k_base', { handle: 'black', handleSide: side, handleType: 'pull', frame: 0.06 });
   glassUnit(E, 3.45, 4.07);
+  // corner filler: closes the gap between the glass unit and the return-run uppers
+  E.box(4.34 - 4.07, up1 - up0, 0.37, (4.07 + 4.34) / 2, up0, -0.415, 'k_base');
+  E.box(0.003, up1 - up0 - 0.06, 0.004, 4.075, up0 + 0.03, -0.229, 'black'); // shadow gap next to glass frame
   E.box(4.07 - 1.45, 0.008, 0.02, (1.45 + 4.07) / 2, up0 - 0.012, -0.3, 'led'); // under-cabinet LED
   // ---- Return run: origin at (11.25, 4.07) facing north; local x = 11.25 - world x
   const Rr = W.sub(11.25, 0, 4.07, PI);
   // in this frame front is local +z (north) and depth -z toward wall (south)
   Rr.box(1.28 - 0.6, plinth, 0.55, (0.6 + 1.28) / 2, 0, -0.33, 'black');
-  Rr.box(1.28 - 0.6, base - plinth, 0.56, (0.6 + 1.28) / 2, plinth, -0.3, 'k_base');
-  P.shakerDoor(Rr.sub(0.785, plinth, 0), 0.35, base - plinth - 0.004, 'k_base', { handle: 'black', handleSide: 'R', handleType: 'pull', frame: 0.055 });
-  P.shakerDoor(Rr.sub(1.12, plinth, 0), 0.32, base - plinth - 0.004, 'k_base', { handle: 'black', handleSide: 'L', handleType: 'pull', frame: 0.055 });
+  CW.carcass(Rr.sub(0.94, plinth, -0.02), 0.68, bh, 0.56, 'k_base', { top: false });
+  CW.hinged(Rr.sub(0.785, plinth, 0), 0.35, 'L', (L) => P.shakerDoor(L, 0.35, bh - 0.004, 'k_base', pull('R')), { angle: 1.45 });
+  CW.hinged(Rr.sub(1.12, plinth, 0), 0.32, 'R', (L) => P.shakerDoor(L, 0.32, bh - 0.004, 'k_base', pull('L')));
+  // under the sink: siphon, bin, cleaning bottles
+  Rr.cyl(0.02, 0.02, 0.32, 0.95, plinth + 0.4, -0.42, 'chrome', 12); Rr.cylZ(0.02, 0.2, 0.95, plinth + 0.4, -0.5, 'chrome', 12);
+  Rr.rbox(0.24, 0.34, 0.3, 0.02, 0.76, plinth + 0.018, -0.3, 'bin1', 0, 2);
+  CW.bottle(Rr, 1.08, plinth + 0.018, -0.2, 'mug_blue', 0.9); CW.bottle(Rr, 1.16, plinth + 0.018, -0.24, 'pack4', 0.8); CW.bottle(Rr, 1.12, plinth + 0.018, -0.36, 'carton', 1.0);
   Rr.box(1.28 - 0.6, 0.03, 0.62, (0.6 + 1.28) / 2, base, -0.29, 'k_top');
   Rr.box(1.28, up0 - top, 0.02, 0.64, top, -0.59, 'k_splash');
   // sink
   Rr.box(0.5, 0.004, 0.4, 0.95, top + 0.001, -0.3, 'steel'); Rr.box(0.46, 0.004, 0.36, 0.95, top + 0.002, -0.3, 'appliance');
   P.deckFaucet(Rr, 0.95, top, -0.55, PI, 'brass');
-  // corner + sink uppers (white)
-  Rr.box(1.28 - 0.0, up1 - up0, upD - 0.02, 0.64, up0, -0.6 + upD / 2 - 0.01, 'k_base');
-  for (const [c, side] of [[0.79, 'R'], [1.11, 'L']]) P.shakerDoor(Rr.sub(c, up0, -0.6 + upD), 0.32, up1 - up0 - 0.004, 'k_base', { handle: 'black', handleSide: side, handleType: 'pull', frame: 0.06 });
-  P.shakerDoor(Rr.sub(0.4, up0, -0.6 + upD), 0.3, up1 - up0 - 0.004, 'k_base', { handle: 'black', handleSide: 'R', handleType: 'pull', frame: 0.06 });
+  // corner + sink uppers (white): blind corner up to 0.37, three opening doors
+  CW.carcass(Rr.sub(0.64, up0, -0.27), 1.28, up1 - up0, upD - 0.02, 'k_base', { parts: [0.37 - 0.64], shelves: [0.45, 0.9] });
+  for (const c of [0.52, 0.82, 1.12]) CW.hinged(Rr.sub(c, up0, -0.6 + upD), 0.3, 'R', (L) => P.shakerDoor(L, 0.3, up1 - up0 - 0.004, 'k_base', pull('L', 0.06)), { angle: 1.5 });
+  CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.018, uz, 'mugs', 41); CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.468, uz, 'jars', 42); CW.kitchenRow(Rr, 0.39, 1.26, up0 + 0.918, uz, 'glasses', 43);
   Rr.box(1.28, 0.008, 0.02, 0.64, up0 - 0.012, -0.3, 'led');
-  // fridge tall (dark oak) 1.28..1.90
-  Rr.box(0.62, up1, 0.58, 1.59, 0, -0.3, 'k_tall');
-  const fs = Rr.sub(1.59, 0, 0);
-  fs.box(0.616, 1.0, 0.019, 0, 0.1, 0.0095, 'k_tall'); fs.box(0.616, up1 - 1.12, 0.019, 0, 1.12, 0.0095, 'k_tall');
-  fs.box(0.014, 0.5, 0.02, -0.26, 0.45, 0.03, 'brass'); fs.box(0.014, 0.7, 0.02, -0.26, 1.2, 0.03, 'brass');
+  // fridge column (dark oak) 1.28..1.90: freezer drawer + fridge door, lit white interior with food
+  const fc = Rr.sub(1.59, 0, 0);
+  fc.box(0.616, plinth, 0.019, 0, 0, -0.05, 'black');
+  CW.carcass(fc.sub(0, 0, -0.01), 0.62, up1, 0.57, 'k_tall', { bottom: false, shelves: [plinth, 1.1] });
+  const fy = 1.13, fh = up1 - 1.15;
+  CW.carcass(fc.sub(0, fy, -0.03), 0.56, fh, 0.52, 'fridge_in', { shelves: [0.36, 0.7, 1.04, 1.36], shelfMat: 'glass_display' });
+  fc.box(0.3, 0.008, 0.02, 0, fy + fh - 0.03, -0.12, 'led');
+  CW.drawer(fc.sub(0, plinth, 0), 0.616, 0.996, 0.5, (L) => { L.box(0.616, 0.996, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.5, 0.02, -0.26, 0.35, 0.03, 'brass'); }, fill('frozen', 3), { boxH: 0.42 });
+  CW.hinged(fc.sub(0, 1.12, 0), 0.616, 'R', (L) => { L.box(0.616, up1 - 1.12 - 0.004, 0.019, 0, 0, 0.0095, 'k_tall'); L.box(0.014, 0.7, 0.02, -0.26, 0.08, 0.03, 'brass'); }, {
+    angle: 1.6,
+    back: (L) => {
+      L.box(0.54, up1 - 1.2, 0.012, 0, 0.04, -0.006, 'fridge_in');
+      for (const [i, y] of [0.12, 0.5, 0.88, 1.24].entries()) {
+        L.box(0.5, 0.07, 0.012, 0, y, -0.1, 'glass_cup'); L.box(0.5, 0.008, 0.09, 0, y, -0.057, 'fridge_in');
+        if (i === 0) { CW.bottle(L, -0.16, y + 0.008, -0.056, 'bottle_green', 0.85); CW.bottle(L, -0.08, y + 0.008, -0.056, 'bottle_amber', 0.8); CW.carton(L, 0.04, y + 0.008, -0.056, 'carton', 0.2); CW.carton(L, 0.13, y + 0.008, -0.056, 'pack3', 0.2); }
+        else if (i === 1) { for (let k = 0; k < 6; k++) CW.bottle(L, -0.2 + k * 0.075, y + 0.008, -0.056, ['food_red', 'bottle_oil', 'food_yellow', 'ceramic', 'food_green', 'pack2'][k], 0.5); }
+        else if (i === 2) { for (let k = 0; k < 10; k++) L.sphere(0.02, -0.2 + k * 0.045, y + 0.03, -0.056, 'carton', 10, 1.3); }
+        else { L.box(0.12, 0.05, 0.07, -0.12, y + 0.008, -0.056, 'food_yellow'); L.box(0.12, 0.05, 0.07, 0.06, y + 0.008, -0.056, 'carton'); }
+      }
+    },
+  });
+  // fridge contents
+  const fz = -0.29, fl = (k) => fy + 0.018 + [0, 0.36, 0.7, 1.04, 1.36][k];
+  fc.rbox(0.5, 0.17, 0.42, 0.01, 0, fl(0), fz, 'glass_cup', 0, 2);
+  for (let k = 0; k < 8; k++) CW.fruit(fc, -0.18 + (k % 4) * 0.12, fl(0) + 0.01, fz - 0.1 + Math.floor(k / 4) * 0.18, 0.035 + (k % 3) * 0.006, ['food_red', 'food_green', 'food_orange', 'food_yellow'][k % 4]);
+  CW.carton(fc, -0.19, fl(1), fz, 'carton', 0.22); CW.carton(fc, -0.1, fl(1), fz, 'carton', 0.22);
+  fc.box(0.2, 0.06, 0.12, 0.1, fl(1), fz + 0.06, 'carton'); for (let k = 0; k < 6; k++) fc.sphere(0.022, 0.035 + (k % 3) * 0.06, fl(1) + 0.07, fz + 0.03 + Math.floor(k / 3) * 0.06, 'carton', 10, 1.3);
+  fc.rbox(0.16, 0.08, 0.16, 0.02, 0.15, fl(1), fz - 0.12, 'mug_blue', 0, 2);
+  CW.jar(fc, -0.17, fl(2), fz, 0.045, 0.14, 'food_red'); CW.jar(fc, -0.06, fl(2), fz + 0.03, 0.04, 0.12, 'food_yellow');
+  fc.box(0.16, 0.08, 0.1, 0.12, fl(2), fz, 'food_yellow'); fc.rbox(0.18, 0.07, 0.14, 0.02, 0.1, fl(2), fz - 0.14, 'jar_glass', 0, 2); fc.box(0.16, 0.05, 0.12, 0.1, fl(2) + 0.004, fz - 0.14, 'food_green');
+  for (let k = 0; k < 4; k++) CW.bottle(fc, -0.18 + k * 0.1, fl(3), fz + 0.05, ['bottle_green', 'bottle_amber', 'carton', 'pack4'][k], 0.85);
+  fc.rbox(0.22, 0.1, 0.18, 0.02, 0, fl(4), fz, 'pack2', 0, 2);
   // decor on counter
   P.vaseGinger(E, 1.75, top, -0.45, 0.55);
-  E.cyl(0.07, 0.07, 0.25, 3.1, top, -0.48, 'oak_light', 20); // board
-  E.cyl(0.09, 0.1, 0.12, 2.4, top + 0.006, -0.2, 'appliance', 24); // pot on hob
+  E.cyl(0.07, 0.07, 0.25, 3.1, top, -0.48, 'oak_light', 20); // utensil crock
+  for (let k = 0; k < 4; k++) E.cyl(0.006, 0.01, 0.2, 3.1 + Math.cos(k * 1.6) * 0.03, top + 0.2, -0.48 + Math.sin(k * 1.6) * 0.03, k % 2 ? 'oak_dark' : 'black', 6);
   // colliders for counters
   P.COLLIDE.push([10.64, 0.25, 11.25, 4.07], [9.35, 4.06, 11.25, 4.67]);
 }
@@ -164,9 +216,10 @@ function girls(B, W) {
   bedClassic(bd, 1.6, 2.0, 'bed_girls', 'scallop');
   // vanity with gilt mirror (north of bed)
   const v = W.sub(2.71, 0.012, 0.63, -HP);
-  v.box(0.9, 0.04, 0.42, 0, 0.72, 0, 'wood_dark'); v.box(0.86, 0.12, 0.4, 0, 0.6, 0, 'wood_dark');
+  v.box(0.9, 0.04, 0.42, 0, 0.72, 0, 'wood_dark');
+  CW.carcass(v.sub(0, 0.6, 0.18), 0.86, 0.12, 0.38, 'wood_dark', { top: false });
+  CW.drawer(v.sub(0, 0.6, 0.18), 0.82, 0.115, 0.34, (L) => { L.box(0.82, 0.115, 0.02, 0, 0.002, 0.01, 'wood_dark'); L.box(0.2, 0.02, 0.01, 0, 0.06, 0.025, 'gilt'); }, (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, 'makeup', 1), { boxH: 0.07 });
   for (const sx of [-0.41, 0.41]) for (const sz of [-0.17, 0.17]) v.cyl(0.015, 0.012, 0.6, sx, 0, sz, 'wood_dark', 10);
-  v.box(0.2, 0.02, 0.01, 0, 0.66, 0.205, 'gilt');
   // gilt mirror on wall
   const mi = W.sub(2.935, 1.1, 0.63, -HP);
   mi.rbox(0.62, 0.9, 0.03, 0.08, 0, 0, 0.018, 'gilt', 0, 3); mi.rbox(0.52, 0.8, 0.01, 0.06, 0, 0.05, 0.036, 'mirror', 0, 3);
@@ -188,7 +241,7 @@ function girls(B, W) {
   P.rug(W.sub(1.6, 0, 2.0), 2.4, 2.6, 'rug_girls');
   // wardrobe along south wall, 5 modules, arched panel doors, facing north
   const wd = W.sub(1.565, 0.012, 4.9, PI);
-  P.wardrobe(wd, 2.71, 2.79, 0.6, 5, 'wardrobe_white', 'arch', 'brass');
+  CW.wardrobe(wd, 2.71, 2.79, 0.6, 5, 'wardrobe_white', 'arch', 'brass', { palette: ['clothes5', 'clothes6', 'clothes7', 'clothes1', 'pillow_navy'], sections: ['hang', 'shelves', 'hang'], seed: 3 });
   // chandelier
   P.rosette(W, 1.47, 2.2, 0.34); P.crystalChandelier(W, 1.47, 2.2, 'girls');
   radiator(W, 'W', 2.52, 4.77); radiator(W, 'N', 0.15, 1.45);
@@ -288,9 +341,10 @@ function boy(B, W) {
   // wardrobe (dark oak) 4.18..5.65 at z 3.48..4.06 facing north
   const wdF = W.sub(4.915, 0.012, 3.48, PI);
   // in this frame local +x -> world -x ; open lit shelves on the west end (local +x side)
-  wdF.box(1.47, 2.79, 0.56, 0, 0, -0.29, 'oak_dark');
-  P.shakerDoor(wdF.sub(-0.485, 0, 0), 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'L', handleType: 'long', frame: 0.07 });
-  P.shakerDoor(wdF.sub(0.015, 0, 0), 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'R', handleType: 'long', frame: 0.07 });
+  CW.carcass(wdF.sub(0, 0, -0.01), 1.47, 2.79, 0.56, 'oak_dark', { parts: [0.274] });
+  CW.hinged(wdF.sub(-0.485, 0, 0), 0.5, 'L', (L) => P.shakerDoor(L, 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'R', handleType: 'long', frame: 0.07 }));
+  CW.hinged(wdF.sub(0.015, 0, 0), 0.5, 'R', (L) => P.shakerDoor(L, 0.5, 2.79, 'oak_dark', { handle: 'black', handleSide: 'L', handleType: 'long', frame: 0.07 }));
+  CW.fillSection(wdF, -0.715, 0.255, 0.018, 2.77, -0.29, 0.5, 'hang', ['clothes2', 'clothes4', 'clothes3', 'clothes1', 'throw_boy'], 5);
   // open shelves (0.4) with LED
   const os = wdF.sub(0.535, 0, 0);
   os.box(0.38, 2.7, 0.01, 0, 0.05, -0.55, 'w_boy');
@@ -349,16 +403,20 @@ function wardrobeRoom(B, W) {
   const n = W.sub(4.78, 0.012, 5.6, 0);
   n.box(1.42, 0.03, 0.5, 0, 2.2, 0.25, 'lacquer_white'); n.box(1.42, 0.03, 0.5, 0, 2.5, 0.25, 'lacquer_white');
   for (const x of [-0.7, 0, 0.7]) n.box(0.025, 2.78, 0.5, x, 0, 0.25, 'lacquer_white');
-  n.cylX(0.012, 1.38, 0, 2.1, 0.25, 'brass');
-  for (let i = 0; i < 16; i++) { const x = -0.65 + i * 0.085; const mats = ['clothes1', 'clothes2', 'clothes3', 'clothes4']; n.rbox(0.03, 0.75 + (i % 3) * 0.15, 0.42, 0.012, x, 2.08 - (0.75 + (i % 3) * 0.15), 0.25, mats[i % 4], 0, 2); }
+  CW.hanging(n, -0.69, -0.01, 2.1, 0.25, ['clothes1', 'clothes2', 'clothes3', 'clothes4', 'clothes7'], 11, { long: 1.0, v: 0.4 });
+  CW.hanging(n, 0.01, 0.69, 2.1, 0.25, ['clothes5', 'clothes6', 'clothes7', 'clothes1'], 12, { long: 1.05, v: 0.45 });
+  for (let i = 0; i < 4; i++) CW.storeBox(n, -0.68 + i * 0.34, 2.23, 0.25, 0.3, 0.24, 0.42, i % 2 ? 'box_linen' : 'pack1');
   n.box(1.42, 0.5, 0.5, 0, 0.0, 0.25, 'lacquer_white');
   P.collide(n, 1.42, 0.5, 0, 0.25);
   // south unit: shelves & drawers
   const s = W.sub(4.6, 0.012, 7.99, PI);
-  s.box(1.04, 2.78, 0.5, 0, 0, 0.25 - 0.5, 'lacquer_white');
-  for (let i = 0; i < 4; i++) P.shakerDoor(s.sub(0, 0.05 + i * 0.22, 0), 1.0, 0.2, 'lacquer_white', { handle: 'brass', handleSide: 'C', handleType: 'pull', frame: 0.05 });
+  CW.carcass(s, 1.04, 2.78, 0.5, 'lacquer_white', { shelves: [0.93] });
+  for (let i = 0; i < 4; i++) CW.drawer(s.sub(0, 0.05 + i * 0.22, 0), 1.0, 0.2, 0.44, (L) => P.shakerDoor(L, 1.0, 0.2, 'lacquer_white', { handle: 'brass', handleSide: 'C', handleType: 'pull', frame: 0.05 }), (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, ['clothes', 'towels', 'clothes', 'socks'][i], i));
   for (const y of [1.2, 1.6, 2.0, 2.4]) { s.box(1.0, 0.025, 0.46, 0, y, -0.25, 'oak_light'); s.box(0.98, 0.005, 0.01, 0, y - 0.01, -0.03, 'led'); }
-  for (let i = 0; i < 5; i++) s.rbox(0.18, 0.12, 0.3, 0.03, -0.38 + i * 0.19, 1.225, -0.25, ['clothes1', 'clothes3', 'clothes2', 'clothes1', 'clothes4'][i], 0, 3);
+  for (let i = 0; i < 3; i++) CW.folded(s, -0.33 + i * 0.33, 1.225, -0.25, 3 + i, ['clothes1', 'clothes3', 'clothes2', 'clothes7', 'clothes4'], 20 + i);
+  for (let i = 0; i < 3; i++) CW.folded(s, -0.33 + i * 0.33, 1.625, -0.25, 2 + ((i + 1) % 3), ['clothes5', 'clothes6', 'clothes7', 'clothes1'], 30 + i);
+  for (let i = 0; i < 4; i++) CW.shoes(s, -0.36 + i * 0.24, 2.025, -0.22, ['leather', 'black', 'shoe_light', 'black'][i]);
+  for (let i = 0; i < 3; i++) CW.storeBox(s, -0.48 + i * 0.33, 2.425, -0.25, 0.3, 0.24, 0.4, 'box_linen');
   P.COLLIDE.push([4.07, 7.94, 5.13, 8.49]);
   // full-length mirror on east wall (x=5.13) + pouf
   const m = W.sub(5.13, 0.1, 7.2, -HP);
@@ -377,11 +435,13 @@ function hall(B, W) {
   W.box(0.02, 2.8 - 2.43, 0.84, 9.2, 2.43, 6.31, 'oak_dark');
   // dark oak wardrobe in niche (x 7.18..7.85, z 7.39..8.49), facing east
   const nw = W.sub(7.85, 0.012, 7.94, HP);
-  nw.box(1.06, 2.79, 0.62, 0, 0, -0.31, 'oak_dark');
-  P.shakerDoor(nw.sub(-0.265, 0, 0), 0.53, 2.2, 'oak_dark', { handle: 'brass', handleSide: 'R', handleType: 'long', frame: 0.07 });
-  P.shakerDoor(nw.sub(0.265, 0, 0), 0.53, 2.2, 'oak_dark', { handle: 'brass', handleSide: 'L', handleType: 'long', frame: 0.07 });
-  P.shakerDoor(nw.sub(-0.265, 2.2, 0), 0.53, 0.59, 'oak_dark', { handle: null, frame: 0.06 });
-  P.shakerDoor(nw.sub(0.265, 2.2, 0), 0.53, 0.59, 'oak_dark', { handle: null, frame: 0.06 });
+  CW.carcass(nw, 1.06, 2.79, 0.62, 'oak_dark', { shelves: [2.19] });
+  CW.hinged(nw.sub(-0.265, 0, 0), 0.53, 'L', (L) => P.shakerDoor(L, 0.53, 2.2, 'oak_dark', { handle: 'brass', handleSide: 'R', handleType: 'long', frame: 0.07 }));
+  CW.hinged(nw.sub(0.265, 0, 0), 0.53, 'R', (L) => P.shakerDoor(L, 0.53, 2.2, 'oak_dark', { handle: 'brass', handleSide: 'L', handleType: 'long', frame: 0.07 }));
+  CW.hinged(nw.sub(-0.265, 2.2, 0), 0.53, 'L', (L) => P.shakerDoor(L, 0.53, 0.59, 'oak_dark', { handle: null, frame: 0.06 }));
+  CW.hinged(nw.sub(0.265, 2.2, 0), 0.53, 'R', (L) => P.shakerDoor(L, 0.53, 0.59, 'oak_dark', { handle: null, frame: 0.06 }));
+  CW.fillSection(nw, -0.51, 0.51, 0.018, 2.19, -0.31, 0.56, 'coats', ['clothes3', 'clothes4', 'clothes2', 'leather', 'clothes1'], 9);
+  CW.storeBox(nw, -0.48, 2.208, -0.31, 0.42, 0.3, 0.45, 'box_linen'); CW.storeBox(nw, 0.04, 2.208, -0.31, 0.42, 0.26, 0.45, 'pack1');
   P.COLLIDE.push([7.18, 7.39, 7.85, 8.49]);
   // arched mirror with LED on west wall of vestibule (x=7.85, z 8.49..9.42), pouf below
   const mz = 8.955;
@@ -398,7 +458,7 @@ function hall(B, W) {
   P.COLLIDE.push([7.88, 8.55, 8.32, 9.37]);
   // white wardrobe east (x 9.26..9.96, z 7.51..8.43) facing west, with upper
   const ew = W.sub(9.26, 0.012, 7.97, -HP);
-  P.wardrobe(ew, 0.92, 2.79, 0.7, 2, 'wardrobe_hall', 'shaker', 'brass', { upper: 0.55, handleType: 'long' });
+  CW.wardrobe(ew, 0.92, 2.79, 0.7, 2, 'wardrobe_hall', 'shaker', 'brass', { upper: 0.55, handleType: 'long', sections: ['coats'], palette: ['clothes1', 'clothes3', 'clothes7', 'clothes2'], seed: 7 });
   // bench niche z 8.43..9.34: oak back, hooks, bench, upper cabinet
   W.box(0.02, 2.24, 0.91, 9.95, 0.0, 8.885, 'oak_dark');
   const bn = W.sub(9.75, 0.012, 8.885, -HP);
@@ -411,8 +471,10 @@ function hall(B, W) {
   // shoes
   for (const [x, m] of [[-0.25, 'black'], [-0.13, 'black'], [0.15, 'leather'], [0.27, 'leather']]) bn.rbox(0.09, 0.08, 0.26, 0.03, x, 0.12, 0.0, m, 0, 3);
   // upper box over bench
-  bn.box(0.91, 0.5, 0.4, 0, 2.29, 0.0, 'wardrobe_hall');
-  P.shakerDoor(bn.sub(-0.228, 2.29, 0.2), 0.455, 0.5, 'wardrobe_hall', { handle: null, frame: 0.06 }); P.shakerDoor(bn.sub(0.228, 2.29, 0.2), 0.455, 0.5, 'wardrobe_hall', { handle: null, frame: 0.06 });
+  CW.carcass(bn.sub(0, 2.29, 0.2), 0.91, 0.5, 0.4, 'wardrobe_hall');
+  CW.hinged(bn.sub(-0.228, 2.29, 0.2), 0.455, 'L', (L) => P.shakerDoor(L, 0.455, 0.5, 'wardrobe_hall', { handle: null, frame: 0.06 }));
+  CW.hinged(bn.sub(0.228, 2.29, 0.2), 0.455, 'R', (L) => P.shakerDoor(L, 0.455, 0.5, 'wardrobe_hall', { handle: null, frame: 0.06 }));
+  CW.storeBox(bn, -0.42, 2.308, 0.0, 0.34, 0.24, 0.32, 'box_linen'); CW.folded(bn, 0.2, 2.308, 0.0, 4, ['clothes3', 'clothes5', 'clothes2', 'clothes6'], 4, 0.32, 0.26);
   P.COLLIDE.push([9.55, 8.43, 9.96, 9.34]);
   // terracotta mouldings around entrance & on vestibule walls
   wallFrame(B, 'w_hall', 7.85, 0, 0, 1, 1, 0, 8.55, 9.36, 0.2, 0.4);
@@ -436,8 +498,8 @@ function bath(B, W) {
   wallFrame(B, 'trim', 5.96, 0, 0, 1, 1, 0, 5.62, 6.58, 0.18, 2.77);
   // vanity in niche (against east wall x=7.78), facing west
   const v = W.sub(7.23, 0, 6.065, -HP);
-  v.box(0.93, 0.36, 0.5, 0, 0.47, -0.27, 'vanity_bath');
-  P.shakerDoor(v.sub(0, 0.47, -0.02), 0.9, 0.34, 'vanity_bath', { handle: 'brass', handleSide: 'C', handleType: 'pull', frame: 0.05 });
+  CW.carcass(v.sub(0, 0.47, -0.02), 0.93, 0.36, 0.5, 'vanity_bath');
+  CW.drawer(v.sub(0, 0.47, -0.02), 0.9, 0.34, 0.42, (L) => P.shakerDoor(L, 0.9, 0.34, 'vanity_bath', { handle: 'brass', handleSide: 'C', handleType: 'pull', frame: 0.05 }), (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, 'toiletries', 4), { boxH: 0.2 });
   v.box(0.93, 0.18, 0.55, 0, 0.83, -0.275, 'marble_white');
   v.box(0.5, 0.004, 0.32, 0, 1.011, -0.24, 'ceramic');
   v.box(0.9, 0.006, 0.01, 0, 0.465, -0.04, 'led');
@@ -452,8 +514,14 @@ function bath(B, W) {
   P.COLLIDE.push([7.2, 5.6, 7.78, 6.53]);
   // washer niche: tall white cabinet doors facing west at x=7.12
   const wn = W.sub(7.115, 0, 6.95, -HP);
-  P.shakerDoor(wn.sub(-0.18, 0.05, 0), 0.36, 2.74, 'wardrobe_white', { handle: 'brass', handleSide: 'R', handleType: 'long', frame: 0.07 });
-  P.shakerDoor(wn.sub(0.18, 0.05, 0), 0.36, 2.74, 'wardrobe_white', { handle: 'brass', handleSide: 'L', handleType: 'long', frame: 0.07 });
+  CW.hinged(wn.sub(-0.18, 0.05, 0), 0.36, 'L', (L) => P.shakerDoor(L, 0.36, 2.74, 'wardrobe_white', { handle: 'brass', handleSide: 'R', handleType: 'long', frame: 0.07 }));
+  CW.hinged(wn.sub(0.18, 0.05, 0), 0.36, 'R', (L) => P.shakerDoor(L, 0.36, 2.74, 'wardrobe_white', { handle: 'brass', handleSide: 'L', handleType: 'long', frame: 0.07 }));
+  // washer + dryer column, shelves with detergents and towels
+  CW.washer(wn.sub(0, 0, -0.07)); CW.washer(wn.sub(0, 0.86, -0.07), 'dryer');
+  for (const y of [1.98, 2.4]) wn.box(0.72, 0.02, 0.6, 0, y, -0.36, 'wardrobe_white');
+  CW.folded(wn, -0.16, 2.0, -0.36, 4, ['linen_white', 'towel_sand', 'linen_white'], 2, 0.3, 0.3);
+  CW.bottle(wn, 0.12, 2.0, -0.3, 'mug_blue', 1.0); CW.bottle(wn, 0.2, 2.0, -0.42, 'pack4', 0.9); CW.bottle(wn, 0.26, 2.0, -0.28, 'ceramic', 0.8);
+  CW.storeBox(wn, -0.33, 2.42, -0.36, 0.3, 0.24, 0.42, 'box_linen'); CW.storeBox(wn, 0.03, 2.42, -0.36, 0.3, 0.24, 0.42, 'box_linen');
   P.COLLIDE.push([7.11, 6.58, 7.78, 7.32]);
   // bathtub against south wall & installation, with burgundy panelled front
   const tb = W.sub(6.24, 0, 8.085, PI);
@@ -474,9 +542,14 @@ function bath(B, W) {
   // toilet on installation x=5.4 facing east, flush plate, cabinet above
   P.wallToilet(W.sub(5.4, 0, 7.15, HP));
   P.flushPlate(W, 5.4, 1.05, 7.15, HP, 'brass');
-  W.box(0.3, 1.25, 0.9, 5.55, 1.55, 7.15, 'wardrobe_white');
-  P.shakerDoor(W.sub(5.7, 1.55, 6.925, HP), 0.45, 1.25, 'wardrobe_white', { handle: 'brass', handleSide: 'L', handleType: 'pull', frame: 0.06 });
-  P.shakerDoor(W.sub(5.7, 1.55, 7.375, HP), 0.45, 1.25, 'wardrobe_white', { handle: 'brass', handleSide: 'R', handleType: 'pull', frame: 0.06 });
+  const tc = W.sub(5.7, 1.55, 7.15, HP);
+  CW.carcass(tc, 0.9, 1.25, 0.3, 'wardrobe_white', { shelves: [0.42, 0.84] });
+  CW.hinged(W.sub(5.7, 1.55, 6.925, HP), 0.45, 'R', (L) => P.shakerDoor(L, 0.45, 1.25, 'wardrobe_white', { handle: 'brass', handleSide: 'L', handleType: 'pull', frame: 0.06 }));
+  CW.hinged(W.sub(5.7, 1.55, 7.375, HP), 0.45, 'L', (L) => P.shakerDoor(L, 0.45, 1.25, 'wardrobe_white', { handle: 'brass', handleSide: 'R', handleType: 'pull', frame: 0.06 }));
+  for (let i = 0; i < 6; i++) tc.cyl(0.055, 0.055, 0.1, -0.3 + (i % 3) * 0.12, 0.018 + Math.floor(i / 3) * 0.1, -0.15, 'carton', 18);
+  for (let i = 0; i < 2; i++) tc.cylX(0.045, 0.13, 0.15 + i * 0.16, 0.063, -0.15, i ? 'towel_sand' : 'linen_white', 16);
+  CW.drawerFill(tc.sub(0, 0.438, -0.15), 0.84, 0.38, 0.24, 'toiletries', 6);
+  CW.drawerFill(tc.sub(0, 0.858, -0.15), 0.84, 0.36, 0.24, 'towels', 7);
   // bidet shower
   W.cylX(0.015, 0.06, 5.43, 0.75, 7.48, 'brass');
   // curtain at tub front, gathered near installation
@@ -506,8 +579,8 @@ function wc(B, W) {
   P.thermostat(W, 10.59, 1.15, 5.35, -HP, 'bronze');
   // vanity along east wall (x 10.71..11.25, z 5.97..7.24) walnut + marble integral sink
   const v = W.sub(10.71, 0, 6.605, -HP);
-  v.box(1.27, 0.4, 0.5, 0, 0.42, -0.27, 'vanity_wc');
-  for (const x of [-0.32, 0.32]) P.shakerDoor(v.sub(x, 0.42, -0.02), 0.62, 0.38, 'vanity_wc', { handle: 'bronze', handleSide: 'C', handleType: 'pull', frame: 0.05 });
+  CW.carcass(v.sub(0, 0.42, -0.02), 1.27, 0.4, 0.5, 'vanity_wc', { parts: [0] });
+  for (const [x, k] of [[-0.32, 'towels'], [0.32, 'toiletries']]) CW.drawer(v.sub(x, 0.42, -0.02), 0.62, 0.38, 0.42, (L) => P.shakerDoor(L, 0.62, 0.38, 'vanity_wc', { handle: 'bronze', handleSide: 'C', handleType: 'pull', frame: 0.05 }), (f, iw, ih, id) => CW.drawerFill(f, iw, ih, id, k, 8), { boxH: 0.22 });
   v.box(1.27, 0.14, 0.54, 0, 0.82, -0.27, 'marble_white');
   v.box(0.55, 0.004, 0.32, 0, 0.961, -0.25, 'ceramic');
   v.box(1.25, 0.006, 0.01, 0, 0.415, -0.03, 'led');
@@ -522,8 +595,11 @@ function wc(B, W) {
   P.COLLIDE.push([10.71, 5.97, 11.25, 7.24]);
   // walnut tall cabinet next to vanity? -> wall cabinet above toilet ledge (south wall)
   const wcab = W.sub(9.95, 1.62, 7.16, PI);
-  wcab.box(1.2, 1.0, 0.28, 0, 0, -0.14, 'vanity_wc');
-  for (const x of [-0.4, 0, 0.4]) P.shakerDoor(wcab.sub(x, 0, 0.0), 0.4, 1.0, 'vanity_wc', { handle: 'bronze', handleSide: x < 0 ? 'R' : 'L', handleType: 'pull', frame: 0.05 });
+  CW.carcass(wcab, 1.2, 1.0, 0.28, 'vanity_wc', { shelves: [0.33, 0.66] });
+  for (const x of [-0.4, 0, 0.4]) CW.hinged(wcab.sub(x, 0, 0.0), 0.4, x < 0 ? 'L' : 'R', (L) => P.shakerDoor(L, 0.4, 1.0, 'vanity_wc', { handle: 'bronze', handleSide: x < 0 ? 'R' : 'L', handleType: 'pull', frame: 0.05 }));
+  CW.drawerFill(wcab.sub(0, 0.018, -0.14), 1.14, 0.3, 0.24, 'toiletries', 9);
+  CW.drawerFill(wcab.sub(0, 0.348, -0.14), 1.14, 0.3, 0.24, 'towels', 10);
+  CW.drawerFill(wcab.sub(0, 0.678, -0.14), 1.14, 0.3, 0.24, 'toiletries', 11);
   // toilet on ledge, facing north
   P.wallToilet(W.sub(9.98, 0, 7.24, PI));
   P.flushPlate(W, 9.98, 1.0, 7.24, PI, 'bronze');

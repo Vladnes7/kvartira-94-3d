@@ -83,6 +83,7 @@ export function initUI({ player, lighting, onModeChange }) {
   for (const b of qSeg.children) { b.classList.toggle('on', b.dataset.q === q0); b.onclick = () => { for (const x of qSeg.children) x.classList.toggle('on', x === b); window.__setQuality && window.__setQuality(b.dataset.q); }; }
   const cross = $('#cross');
   player.onLock = (l) => { cross.style.display = l ? 'block' : 'none'; };
+  player.onHot = (h) => { cross.classList.toggle('hot', h); $('#gl').style.cursor = h && !player.locked ? 'pointer' : ''; };
 
   // touch / small-screen layout, persistent joystick, run button
   const body = document.body;
@@ -91,9 +92,6 @@ export function initUI({ player, lighting, onModeChange }) {
   const joy = $('#joy'), knob = joy.firstElementChild;
   player.joyBase = () => { const r = joy.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
   player.onJoy = (j) => { joy.classList.toggle('active', !!j.active); knob.style.transform = j.active ? `translate(${(j.kx || 0) * 40}px, ${(j.ky || 0) * 40}px)` : ''; if (j.active) hideLookHint(); };
-  const runBtn = $('#runBtn');
-  const toggleRun = (e) => { e.preventDefault(); player.run = !player.run; runBtn.classList.toggle('on', player.run); };
-  runBtn.addEventListener('touchstart', toggleRun, { passive: false }); runBtn.addEventListener('click', (e) => { if (!touch) toggleRun(e); });
   const lookHint = $('#lookHint'); let hintT;
   const hideLookHint = () => { clearTimeout(hintT); hintT = setTimeout(() => { lookHint.style.opacity = '0'; }, 2500); };
 
@@ -146,7 +144,30 @@ export function initUI({ player, lighting, onModeChange }) {
     }
     toast(r.name);
   }
-  player.pickHandler = (x, z) => goToPoint(x, z);
+
+  // ---- room buttons (overview): hover shows details, click goes into the room ----
+  const areaOf = (poly) => { let a = 0; for (let i = 0; i < poly.length; i++) { const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length]; a += x0 * y1 - x1 * y0; } return Math.abs(a) / 2e6; };
+  const area = (ids) => ROOMS.filter((r) => ids.includes(r.id)).reduce((s, r) => s + areaOf(r.poly), 0);
+  const roomBar = $('#roomBar'), tip = $('#roomTip');
+  for (const r of ROOM_INFO) {
+    const b = document.createElement('button');
+    const m2 = area(r.ids);
+    b.innerHTML = `<span>${r.name}</span><small>${m2.toFixed(1).replace('.', ',')} м²</small>`;
+    b.setAttribute('aria-label', `${r.name}, ${m2.toFixed(1)} квадратных метров. ${r.desc}`);
+    const show = () => {
+      tip.innerHTML = `<b>${r.name}</b><span class="m2">${m2.toFixed(1).replace('.', ',')} м²</span><p>${r.desc}</p><p class="opens">${r.opens}</p><i>Нажмите, чтобы войти</i>`;
+      const br = b.getBoundingClientRect(), tw = Math.min(280, innerWidth - 24);
+      tip.style.width = tw + 'px';
+      tip.style.left = Math.max(12, Math.min(innerWidth - tw - 12, br.left + br.width / 2 - tw / 2)) + 'px';
+      tip.style.bottom = (innerHeight - br.top + 10) + 'px';
+      tip.classList.add('show');
+    };
+    const hide = () => tip.classList.remove('show');
+    b.addEventListener('mouseenter', show); b.addEventListener('focus', show);
+    b.addEventListener('mouseleave', hide); b.addEventListener('blur', hide);
+    b.onclick = () => { hide(); player.teleport(r.view); toast(r.name); };
+    roomBar.appendChild(b);
+  }
 
   let currentUIRoom = 'living', lastRoom = '';
   function update() {
@@ -170,6 +191,17 @@ export function initUI({ player, lighting, onModeChange }) {
   }
   return { update, toast, showStart: () => start.classList.remove('hidden') };
 }
+
+const ROOM_INFO = [
+  { view: 'living', ids: ['living'], name: 'Кухня-гостиная', desc: 'Стены под рогожку, карниз с сухариками, люстры с льняными абажурами, синие кресла, кофейный стол из брекчии.', opens: 'Открываются: кухонные шкафы и ящики, холодильник, витрины.' },
+  { view: 'girls', ids: ['girls'], name: 'Комната девочек', desc: 'Голубые обои-шинуазри в рамках молдингов, хрустальная люстра, туалетный столик с зеркалом.', opens: 'Открываются: шкаф с арками, ящик столика.' },
+  { view: 'boy', ids: ['boy'], name: 'Комната мальчика', desc: 'Арочная ниша из тёмного дуба вокруг стола, кушетка, подсвеченные полки.', opens: 'Открывается: шкаф с одеждой.' },
+  { view: 'bed', ids: ['bed'], name: 'Спальня', desc: 'Оливковое изголовье со стёжкой, розовая ярусная люстра, рогожка в молдингах.', opens: '' },
+  { view: 'wardrobe', ids: ['wardrobe'], name: 'Гардеробная', desc: 'Открытое хранение, полки с подсветкой, ростовое зеркало.', opens: 'Открываются: ящики с одеждой.' },
+  { view: 'bath', ids: ['bath'], name: 'Ванная', desc: 'Слэб «виола», бордовая панель ванны, фреска, зеллидж в нише.', opens: 'Открываются: ниша со стиралкой, шкафчик над унитазом, ящик тумбы.' },
+  { view: 'wc', ids: ['wc', 'shower'], name: 'Санузел с душем', desc: 'Оникс, бронзовые арочные двери душа, тумба из ореха.', opens: 'Открываются: навесной шкаф, ящики тумбы.' },
+  { view: 'hall', ids: ['hall', 'vest'], name: 'Прихожая', desc: 'Терракотовые стены, плитка-чешуя, арочное зеркало с подсветкой.', opens: 'Открываются: шкафы с верхней одеждой, антресоль.' },
+];
 
 function pointIn(x, y, poly) {
   let ins = false;

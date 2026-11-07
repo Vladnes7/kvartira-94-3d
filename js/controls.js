@@ -29,6 +29,7 @@ export class Player {
     this.joy = { active: false, x: 0, y: 0, id: null };
     this.look = { id: null, x: 0, y: 0 };
     this.onInteract = onInteract;
+    this.movers = []; this.lastJoyEnd = 0; this.mouse = null; this.hot = false;
     this.ray = new THREE.Raycaster(); this.ray.far = 3.2;
     this.orbit = new OrbitControls(camera, dom);
     this.orbit.enabled = false; this.orbit.target.set(5.6, 0, 4.6);
@@ -53,12 +54,12 @@ export class Player {
     // desktop drag-to-look fallback (when pointer lock unavailable)
     let drag = null;
     d.addEventListener('mousedown', (e) => { if (this.mode !== 'walk' || this.locked) return; drag = { x: e.clientX, y: e.clientY, moved: false }; });
+    d.addEventListener('mousemove', (e) => { this.mouse = { x: e.clientX, y: e.clientY }; });
+    d.addEventListener('mouseleave', () => { this.mouse = null; });
     addEventListener('mousemove', (e) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; this.yaw -= dx * 0.004; this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch - dy * 0.004)); drag.x = e.clientX; drag.y = e.clientY; });
     addEventListener('mouseup', (e) => { if (drag && !drag.moved && this.mode === 'walk') this.interactAt(e.clientX, e.clientY); drag = null; });
-    d.addEventListener('click', (e) => {
-      if (this.mode === 'walk' && this.locked) this.interactCenter();
-      else if (this.mode === 'orbit') this.orbitPick(e.clientX, e.clientY);
-    });
+    // overview mode: clicks only rotate/zoom; rooms are chosen with the room buttons
+    d.addEventListener('click', () => { if (this.mode === 'walk' && this.locked) this.interactCenter(); });
     // touch: left half joystick, right half look; tap = interact
     d.addEventListener('touchstart', (e) => {
       for (const t of e.changedTouches) {
@@ -68,7 +69,7 @@ export class Player {
           this.joy = { active: true, id: t.identifier, ox: base.x, oy: base.y, x: 0, y: 0 };
           this._joyMove(t.clientX, t.clientY);
         }
-        else if (this.look.id === null) this.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, t: performance.now() };
+        else if (this.look.id === null) this.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, t: performance.now(), tap: t.clientX >= innerWidth * 0.45 && !this.joy.active && performance.now() - this.lastJoyEnd > 350 };
       }
     }, { passive: true });
     d.addEventListener('touchmove', (e) => {
@@ -79,9 +80,10 @@ export class Player {
     }, { passive: true });
     const end = (e) => {
       for (const t of e.changedTouches) {
-        if (t.identifier === this.joy.id) { this.joy = { active: false, x: 0, y: 0, id: null }; this.onJoy && this.onJoy(this.joy); }
+        if (t.identifier === this.joy.id) { this.joy = { active: false, x: 0, y: 0, id: null }; this.lastJoyEnd = performance.now(); this.onJoy && this.onJoy(this.joy); }
         if (t.identifier === this.look.id) {
-          if (Math.hypot(t.clientX - this.look.sx, t.clientY - this.look.sy) < 8 && performance.now() - this.look.t < 300) this.interactAt(t.clientX, t.clientY);
+          // tap-to-open only on the right (look) side and never while/just after using the joystick
+          if (this.look.tap && !this.joy.active && Math.hypot(t.clientX - this.look.sx, t.clientY - this.look.sy) < 8 && performance.now() - this.look.t < 300) this.interactAt(t.clientX, t.clientY);
           this.look = { id: null };
         }
       }
@@ -141,7 +143,7 @@ export class Player {
     if (this.joy.active) { fx += this.joy.x; fz += this.joy.y; }
     if (k.KeyQ) this.yaw += dt * 1.8; if (k.KeyR) this.yaw -= dt * 1.8;
     const len = Math.hypot(fx, fz);
-    const speed = (k.ShiftLeft || k.ShiftRight || this.run ? 2.6 : 1.45);
+    const speed = (k.ShiftLeft || k.ShiftRight ? 2.6 : 1.45);
     const target = new THREE.Vector2();
     if (len > 0.01) {
       const nx = fx / Math.max(1, len), nz = fz / Math.max(1, len);
@@ -185,22 +187,33 @@ export class Player {
     return false;
   }
   interactCenter() { this.interactAt(innerWidth / 2, innerHeight / 2); }
-  interactAt(cx, cy) {
+  targets() {
+    if (!this._targets || this._targetsN !== this.movers.length) {
+      this._targets = []; for (const d of this.doors) if (d.interactive) this._targets.push(...d.meshes);
+      for (const m of this.movers) this._targets.push(...m.meshes);
+      this._targetsN = this.movers.length;
+    }
+    return this._targets;
+  }
+  pick(cx, cy) {
     const ndc = new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
     this.ray.setFromCamera(ndc, this.camera);
-    const meshes = []; for (const d of this.doors) if (d.interactive) meshes.push(...d.meshes);
-    const hit = this.ray.intersectObjects(meshes, false)[0];
-    if (hit && hit.object.userData.door) { this.onInteract && this.onInteract(hit.object.userData.door); return true; }
-    return false;
+    const hit = this.ray.intersectObjects(this.targets(), false)[0];
+    const u = hit && hit.object.userData;
+    return u && (u.door || u.mover) ? u : null;
   }
-  orbitPick(cx, cy) {
-    const ndc = new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
-    this.ray.setFromCamera(ndc, this.camera); this.ray.far = 100;
-    const p = new THREE.Vector3();
-    if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) {
-      if (this.pickHandler) this.pickHandler(p.x, p.z);
-    }
-    this.ray.far = 3.2;
+  interactAt(cx, cy) {
+    const u = this.pick(cx, cy); if (!u) return false;
+    this.onInteract && this.onInteract(u.door || u.mover, !!u.mover);
+    return true;
+  }
+  // highlight the crosshair / pointer when aiming at something that opens
+  updateHover() {
+    if (this.mode !== 'walk') { if (this.hot) { this.hot = false; this.onHot && this.onHot(false); } return; }
+    let hot = false;
+    if (this.locked) hot = !!this.pick(innerWidth / 2, innerHeight / 2);
+    else if (this.mouse) hot = !!this.pick(this.mouse.x, this.mouse.y);
+    if (hot !== this.hot) { this.hot = hot; this.onHot && this.onHot(hot); }
   }
   facing() { return this.yaw; }
 }

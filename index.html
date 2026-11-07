@@ -76,6 +76,25 @@
   #map { position: fixed; left: calc(16px + env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); padding: 8px; z-index: 5; }
   #map canvas { display: block; width: 236px; height: 200px; cursor: pointer; }
   #map .hint { font-size: 11px; color: var(--ink-2); padding: 4px 2px 0; }
+  /* room buttons (overview mode only) */
+  #roomBar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: none; gap: 2px; padding: 4px; z-index: 6; max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none; }
+  #roomBar::-webkit-scrollbar { display: none; }
+  body:not(.walk) #roomBar { display: flex; }
+  body:not(.walk) #map { display: none; }
+  #roomBar button { border: 0; background: transparent; border-radius: 7px; padding: 7px 11px; text-align: left; white-space: nowrap; display: flex; flex-direction: column; gap: 1px; flex: none; }
+  #roomBar button span { font-size: 13px; font-weight: 600; }
+  #roomBar button small { font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  #roomBar button:hover, #roomBar button:focus-visible { background: var(--ink); color: var(--panel-solid); outline: none; }
+  #roomBar button:hover small, #roomBar button:focus-visible small { color: inherit; opacity: .75; }
+  #roomTip { position: fixed; z-index: 7; padding: 12px 14px; pointer-events: none; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; }
+  #roomTip.show { opacity: 1; transform: none; }
+  #roomTip b { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 600; display: block; }
+  #roomTip .m2 { display: inline-block; margin: 2px 0 6px; font-size: 12px; font-weight: 600; color: var(--accent); }
+  #roomTip p { margin: 0 0 6px; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+  #roomTip p.opens:empty { display: none; }
+  #roomTip i { font-style: normal; font-size: 12px; font-weight: 600; }
+  body.touch #roomTip { display: none; }
+  #cross.hot { width: 14px; height: 14px; margin: -7px 0 0 -7px; background: transparent; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.25); }
 
   #cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 4; display: none; pointer-events: none; }
   #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); opacity: 0; padding: 9px 14px; font-size: 13px; z-index: 7; transition: all .3s; pointer-events: none; }
@@ -101,10 +120,8 @@
   #joy { position: fixed; left: calc(28px + env(safe-area-inset-left, 0px)); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); width: 132px; height: 132px; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); background: radial-gradient(circle, rgba(255,255,255,.16), rgba(20,16,12,.22)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: none; z-index: 5; display: none; }
   #joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 4px 14px rgba(0,0,0,.3); transition: transform .05s; }
   #joy.active { border-color: rgba(255,255,255,.85); }
-  #runBtn { position: fixed; right: calc(28px + env(safe-area-inset-right, 0px)); bottom: calc(44px + env(safe-area-inset-bottom, 0px)); width: 76px; height: 76px; border-radius: 50%; font-size: 13px; font-weight: 600; z-index: 5; display: none; color: var(--ink); user-select: none; -webkit-user-select: none; touch-action: none; }
-  #runBtn.on { background: var(--accent); color: var(--accent-ink); }
   #lookHint { position: fixed; right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(134px + env(safe-area-inset-bottom, 0px)); font-size: 11px; color: rgba(255,255,255,.85); text-shadow: 0 1px 3px rgba(0,0,0,.6); z-index: 4; display: none; pointer-events: none; transition: opacity .6s; }
-  body.touch.walk #joy, body.touch.walk #runBtn, body.touch.walk #lookHint { display: block; }
+  body.touch.walk #joy, body.touch.walk #lookHint { display: block; }
   #map .mroom { display: none; font-size: 11px; font-weight: 600; padding: 4px 2px 0; }
   #fsBtn { display: grid; place-items: center; padding: 9px 11px; }
 
@@ -116,7 +133,7 @@
   body.touch #bar, body.small #bar { top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); left: calc(10px + env(safe-area-inset-left, 0px)); justify-content: flex-end; gap: 6px; }
   body.touch .seg button, body.small .seg button { padding: 7px 8px; font-size: 12px; }
   body.touch .btn, body.small .btn { padding: 8px 10px; font-size: 12px; }
-  @media (max-height: 460px) { body.touch #map canvas { width: 104px; height: 88px; } #joy { width: 112px; height: 112px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); } #runBtn { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); } }
+  @media (max-height: 460px) { body.touch #map canvas { width: 104px; height: 88px; } #joy { width: 112px; height: 112px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); } }
   @media (max-width: 720px) {
     #panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 62vh; border-radius: 16px 16px 0 0; transform: translateY(105%); padding-bottom: env(safe-area-inset-bottom, 0px); }
     #panel.open { transform: none; }
@@ -154,8 +171,9 @@
 <div id="map" class="glass"><canvas id="mapc" width="472" height="400"></canvas><div class="hint">Нажмите на комнату, чтобы перейти</div><div class="mroom" id="mapRoom"></div></div>
 <div id="cross"></div>
 <div id="joy" aria-hidden="true"><i></i></div>
-<button id="runBtn" class="glass" aria-label="Бег">Бег</button>
 <div id="lookHint">Свайп здесь — осмотреться</div>
+<nav id="roomBar" class="glass" aria-label="Комнаты"></nav>
+<div id="roomTip" class="glass" role="tooltip"></div>
 <div id="toast" class="glass"></div>
 
 <div id="load" class="overlay">
@@ -174,13 +192,13 @@
     <div class="keys" id="keysDesk">
       <kbd>W A S D</kbd><span>идти; с Shift быстрее</span>
       <kbd>Мышь</kbd><span>осмотреться</span>
-      <kbd>Клик / E</kbd><span>открыть или закрыть дверь</span>
+      <kbd>Клик / E</kbd><span>открыть дверь, шкаф или ящик (точка прицела подсвечивается)</span>
       <kbd>Esc</kbd><span>освободить курсор, чтобы пользоваться панелью</span>
     </div>
     <div class="keys hidden" id="keysTouch">
       <kbd>Левая половина</kbd><span>джойстик, чтобы идти</span>
       <kbd>Правая половина</kbd><span>свайп, чтобы осмотреться</span>
-      <kbd>Тап по двери</kbd><span>открыть или закрыть</span>
+      <kbd>Тап справа</kbd><span>по двери, шкафу или ящику — открыть</span>
     </div>
     <div class="qrow"><span>Графика</span><div class="seg" id="qSeg"><button data-q="high" class="on">Высокая</button><button data-q="fast">Быстрая</button></div></div>
     <div class="row"><button class="btn primary" id="enterBtn">Войти в квартиру</button><button class="btn" id="overviewBtn">Обзор сверху</button></div>

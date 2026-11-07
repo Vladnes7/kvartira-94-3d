@@ -303,7 +303,7 @@ export function flatDoor(F, w, h, mat, handle, handleType = 'long', side = 'R') 
   if (handle) { const hx = side === 'R' ? w / 2 - 0.05 : side === 'L' ? -w / 2 + 0.05 : 0; F.box(0.014, handleType === 'long' ? 0.5 : 0.2, 0.02, hx, h * 0.45 - (handleType === 'long' ? 0.25 : 0.1), 0.03, handle); }
 }
 // Arched-top panel door (girls wardrobe)
-export function archPanelDoor(F, w, h, mat, handle = 'brass') {
+export function archPanelDoor(F, w, h, mat, handle = 'brass', side = 'R') {
   F.box(w - 0.004, h - 0.004, 0.02, 0, 0.002, 0.01, mat);
   const inset = 0.07, r = (w - 2 * inset) / 2;
   const top = h - inset - r;
@@ -312,7 +312,7 @@ export function archPanelDoor(F, w, h, mat, handle = 'brass') {
   for (let k = 0; k <= 16; k++) { const a = Math.PI - (k / 16) * Math.PI; pts.push([Math.cos(a) * r, top + Math.sin(a) * r]); }
   pts.push([w / 2 - inset, inset]); pts.push([-w / 2 + inset, inset]);
   F.tube(pts.map(([x, y]) => [x, y, 0.022]), 0.007, mat, 60, false, 6);
-  F.box(0.012, 0.28, 0.02, w / 2 - 0.035, h * 0.45, 0.032, handle);
+  F.box(0.012, 0.28, 0.02, (side === 'L' ? -1 : 1) * (w / 2 - 0.035), h * 0.45, 0.032, handle);
 }
 
 export function glassCabinetDoor(F, w, h, glass = 'glass_display', frame = 'black') {
@@ -325,35 +325,18 @@ export function glassCabinetDoor(F, w, h, glass = 'glass_display', frame = 'blac
 // Porcelain display items on a shelf
 export function porcelainSet(F, w, y, z, seed = 1) {
   const R = (k) => (Math.sin(k * 91.7 + seed * 13.3) * 0.5 + 0.5);
-  let x = -w / 2 + 0.06;
+  let x = -w / 2 + 0.02;
   let k = 0;
-  while (x < w / 2 - 0.08) {
+  for (;;) {
     const t = R(k++);
-    if (t < 0.4) { // plate standing
-      const s = F.sub(x + 0.07, y + 0.11, z - 0.05, 0, -0.15);
-      s.cylZ(0.1, 0.012, 0, 0, 0, 'porcelain', 32); x += 0.17;
-    } else if (t < 0.75) { vaseGinger(F, x + 0.06, y, z, 0.5 + R(k++) * 0.25); x += 0.14; }
-    else { F.lathe([[0, 0], [0.04, 0], [0.05, 0.05], [0.03, 0.12], [0.035, 0.16], [0, 0.16]], x + 0.05, y, z, 'porcelain', 20); x += 0.12; }
+    const kind = t < 0.4 ? 'plate' : t < 0.75 ? 'vase' : 'jug';
+    const wd = kind === 'plate' ? 0.2 : kind === 'vase' ? 0.13 : 0.1;
+    if (x + wd > w / 2 - 0.015) { if (wd > 0.1 && x + 0.1 <= w / 2 - 0.015) { F.lathe([[0, 0], [0.04, 0], [0.05, 0.05], [0.03, 0.12], [0.035, 0.16], [0, 0.16]], x + 0.05, y, z, 'porcelain', 20); } break; }
+    if (kind === 'plate') { const s = F.sub(x + wd / 2, y + 0.095, z - 0.04, 0, -0.15); s.cylZ(0.09, 0.012, 0, 0, 0, 'porcelain', 32); }
+    else if (kind === 'vase') vaseGinger(F, x + wd / 2, y, z, 0.48 + R(k++) * 0.2);
+    else F.lathe([[0, 0], [0.04, 0], [0.05, 0.05], [0.03, 0.12], [0.035, 0.16], [0, 0.16]], x + wd / 2, y, z, 'porcelain', 20);
+    x += wd + 0.01;
   }
-}
-
-// Wardrobe carcass with doors. origin: bottom centre of front plane, facing +z, depth into -z
-export function wardrobe(F, w, h, d, n, mat, style = 'shaker', handle = 'brass', opts = {}) {
-  F.box(w, h, d - 0.02, 0, 0, -d / 2 - 0.01, mat);
-  const dw = w / n;
-  for (let i = 0; i < n; i++) {
-    const s = F.sub(-w / 2 + dw * (i + 0.5), 0, 0);
-    const hs = i % 2 === 0 ? 'R' : 'L';
-    if (style === 'arch') archPanelDoor(s, dw, h - (opts.upper || 0), mat, handle);
-    else if (style === 'flat') { s.box(dw - 0.004, h - 0.004 - (opts.upper || 0), 0.019, 0, 0.002, 0.0095, mat); if (handle) s.box(0.014, 0.5, 0.02, hs === 'R' ? dw / 2 - 0.05 : -dw / 2 + 0.05, (h - (opts.upper || 0)) * 0.45 - 0.25, 0.03, handle); }
-    else shakerDoor(s, dw, h - (opts.upper || 0), mat, { handle, handleSide: hs, handleType: opts.handleType || 'long', frame: 0.08 });
-    if (opts.upper) {
-      const su = F.sub(-w / 2 + dw * (i + 0.5), h - opts.upper, 0);
-      if (style === 'flat') su.box(dw - 0.004, opts.upper - 0.004, 0.019, 0, 0.002, 0.0095, mat);
-      else shakerDoor(su, dw, opts.upper, mat, { handle: null, frame: 0.07 });
-    }
-  }
-  collide(F, w, d, 0, -d / 2);
 }
 
 // ---------- sanitary ----------

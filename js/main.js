@@ -5,6 +5,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildMaterials } from './materials.js';
 import { buildArchitecture } from './plan.js';
 import { buildRooms } from './rooms.js';
+import { MOVERS } from './casework.js';
 import { buildLighting } from './lighting.js';
 import { Player } from './controls.js';
 import { initUI, toast } from './ui.js';
@@ -61,7 +62,9 @@ async function boot() {
   composer.addPass(new OutputPass());
   try { const { SMAAPass } = await import('three/addons/postprocessing/SMAAPass.js'); composer.addPass(new SMAAPass(innerWidth * DPR, innerHeight * DPR)); } catch (e) { console.warn('SMAA unavailable', e); }
 
-  const player = new Player(camera, canvas, arch.doors, (door) => toggleDoor(door));
+  const player = new Player(camera, canvas, arch.doors, (t, isMover) => (isMover ? toggleMover(t) : toggleDoor(t)));
+  player.movers = MOVERS;
+  function toggleMover(m) { m.target = m.target < 0.5 ? 1 : 0; }
   player.teleport('living');
 
   function toggleDoor(door) {
@@ -95,14 +98,21 @@ async function boot() {
 
   const clock = new THREE.Clock();
   void 0;
-  let slowFrames = 0, wasMoving = false; dprNow = DPR;
+  let slowFrames = 0, wasMoving = false, hoverTick = 0; dprNow = DPR;
   renderer.setAnimationLoop(() => {
     const dt = Math.min(0.05, clock.getDelta());
     let moving = false;
     for (const d of arch.doors) {
       if (Math.abs(d.open - d.target) > 0.001) { moving = true; d.open += (d.target - d.open) * (1 - Math.exp(-dt * 5)); d.pivot.rotation.y = d.base + d.sign * d.open * d.max; }
     }
+    for (const m of MOVERS) {
+      if (Math.abs(m.open - m.target) <= 0.001) continue;
+      moving = true; m.open += (m.target - m.open) * (1 - Math.exp(-dt * 6)); if (Math.abs(m.open - m.target) <= 0.001) m.open = m.target;
+      if (m.kind === 'hinge') m.inner.rotation.y = m.sign * m.open * m.max; else m.inner.position.z = m.open * m.max;
+      for (const me of m.inside) me.visible = m.open > 0.004;
+    }
     if (moving || wasMoving) renderer.shadowMap.needsUpdate = true;
+    if (++hoverTick % 6 === 0) player.updateHover();
     wasMoving = moving;
     player.update(dt);
     ui.update();
