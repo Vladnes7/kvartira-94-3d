@@ -16,6 +16,9 @@ export const VIEWS = {
   wc: { p: [9.65, 6.95], look: [10.0, 1.4, 4.9], name: 'Санузел' },
 };
 
+export const HOME = [-0.3, -0.3, 11.55, 9.72]; // whole apartment, metres [x0, z0, x1, z1]
+const TOP_FOV = 6;
+
 export class Player {
   constructor(camera, dom, doors, onInteract) {
     this.camera = camera; this.dom = dom; this.doors = doors;
@@ -33,7 +36,7 @@ export class Player {
     this.ray = new THREE.Raycaster(); this.ray.far = 3.2;
     this.orbit = new OrbitControls(camera, dom);
     this.orbit.enabled = false; this.orbit.target.set(5.6, 0, 4.6);
-    this.orbit.maxPolarAngle = Math.PI * 0.46; this.orbit.minDistance = 4; this.orbit.maxDistance = 26; this.orbit.enableDamping = true;
+    this.orbit.maxPolarAngle = Math.PI * 0.46; this.orbit.minDistance = 3; this.orbit.maxDistance = 30; this.orbit.enableDamping = true;
     this._bind();
   }
   _bind() {
@@ -109,13 +112,77 @@ export class Player {
   setMode(m) {
     if (m === this.mode) return;
     this.mode = m;
+    this.tween = null;
     if (m === 'orbit') {
       if (document.pointerLockElement) document.exitPointerLock();
       this.orbit.enabled = true;
-      this.camera.position.set(5.6 + 2, 15, 4.6 + 11);
-      this.orbit.target.set(5.6, 0, 4.6); this.orbit.update();
-    } else { this.orbit.enabled = false; }
+      this.view = 'iso';
+      const s = this.shotFor(HOME, 'iso');
+      this.applyShot(s); this.orbit.target.copy(s.target); this.orbit.update();
+      this._orbitLimits();
+    } else {
+      this.orbit.enabled = false;
+      this.camera.fov = 68; this.camera.near = 0.05; this.camera.far = 400; this.camera.updateProjectionMatrix();
+    }
     this.onMode && this.onMode(m);
+  }
+  // ---- overview: isometric orbit or a plan-like top view (very long lens ≈ orthographic, like the drawing) ----
+  // a "shot" = target + spherical angles + visible height h (m) + fov; distance follows from h and fov,
+  // so tweening h and fov together gives a smooth dolly-zoom between perspective and plan.
+  shotFor(box, view) {
+    const [x0, z0, x1, z1] = box;
+    const asp = Math.max(0.3, innerWidth / innerHeight);
+    const small = innerWidth < 720;
+    const w = x1 - x0, d = z1 - z0;
+    const target = new THREE.Vector3((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    if (view === 'top') {
+      // whole flat fits as before; a single room gets more margin so the top bar and the bottom buttons never cover it
+      const room = box !== HOME;
+      const h = Math.max(d * (small ? 1.9 : room ? 1.6 : 1.32), (w / asp) * (room ? 1.45 : 1.2), 2.6);
+      target.z += h * (small ? 0.085 : room ? 0.06 : 0.02); // shift the plan up, clear of the bottom bars
+      return { target, polar: 0.0005, az: 0, h, fov: TOP_FOV };
+    }
+    if (small) target.z += 0.9;
+    const h = box === HOME ? Math.max(Math.hypot(w, d) * 0.85, Math.max(w, d) / asp * 1.05) : Math.max(Math.hypot(w, d) * 1.45, (w / asp) * 1.6, 5.6);
+    return { target, polar: 0.92, az: box === HOME ? 0.17 : 0.35, h, fov: 45 };
+  }
+  distFor(s) { return s.h / (2 * Math.tan(THREE.MathUtils.degToRad(s.fov) / 2)); }
+  applyShot(s) {
+    const cam = this.camera, r = this.distFor(s);
+    cam.fov = s.fov;
+    cam.position.set(s.target.x + r * Math.sin(s.polar) * Math.sin(s.az), s.target.y + r * Math.cos(s.polar), s.target.z + r * Math.sin(s.polar) * Math.cos(s.az));
+    cam.lookAt(s.target);
+    this._clip(r);
+  }
+  _clip(r) { // tight depth range around the model (precision for AO at long-lens distances)
+    const cam = this.camera, n = Math.max(0.05, r - 16), f = r + 28;
+    if (Math.abs(cam.near - n) > 1e-3 || Math.abs(cam.far - f) > 1e-3 || cam.fov !== this._fov) { cam.near = n; cam.far = f; this._fov = cam.fov; cam.updateProjectionMatrix(); }
+  }
+  currentShot() {
+    const o = this.orbit, off = this.camera.position.clone().sub(o.target);
+    const r = off.length(), polar = Math.acos(Math.max(-1, Math.min(1, off.y / r))), az = Math.atan2(off.x, off.z);
+    return { target: o.target.clone(), polar, az, h: 2 * r * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2), fov: this.camera.fov };
+  }
+  // fly to a room (box in metres) in the given view; HOME = whole apartment
+  flyTo(box, view = this.view, dur = 1.1) {
+    if (this.mode !== 'orbit') this.setMode('orbit');
+    this.view = view;
+    const a = this.currentShot(), b = this.shotFor(box, view);
+    let daz = b.az - a.az; daz = Math.atan2(Math.sin(daz), Math.cos(daz)); b.az = a.az + daz; // shortest way round
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.tween = { a, b, t: 0, dur: reduce ? 0.01 : dur };
+    this.orbit.enabled = false;
+  }
+  _orbitLimits() {
+    const o = this.orbit, top = this.view === 'top';
+    o.enableRotate = !top;
+    o.minPolarAngle = top ? 0.0005 : 0.15; o.maxPolarAngle = top ? 0.0005 : Math.PI * 0.46;
+    const d = this.distFor({ h: 1, fov: this.camera.fov });
+    const cur = this.camera.position.distanceTo(o.target); // never clamp the framed shot (narrow phone screens need a long way back)
+    o.minDistance = top ? 1.6 * d : 3; o.maxDistance = Math.max(top ? 16 * d : 30, cur * 1.4);
+    o.mouseButtons = { LEFT: top ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    o.touches = { ONE: top ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    o.screenSpacePanning = true;
   }
   free(x, z) {
     const r = this.r;
@@ -135,7 +202,22 @@ export class Player {
     return out;
   }
   update(dt) {
-    if (this.mode === 'orbit') { this.orbit.update(); return; }
+    if (this.mode === 'orbit') {
+      const tw = this.tween;
+      if (tw) {
+        tw.t = Math.min(1, tw.t + dt / tw.dur);
+        const e = tw.t < 0.5 ? 4 * tw.t ** 3 : 1 - (-2 * tw.t + 2) ** 3 / 2; // easeInOutCubic
+        const L = (p, q) => p + (q - p) * e;
+        const s = { target: tw.a.target.clone().lerp(tw.b.target, e), polar: L(tw.a.polar, tw.b.polar), az: L(tw.a.az, tw.b.az),
+          h: Math.exp(L(Math.log(tw.a.h), Math.log(tw.b.h))), fov: Math.exp(L(Math.log(tw.a.fov), Math.log(tw.b.fov))) };
+        this.applyShot(s);
+        if (tw.t >= 1) { this.tween = null; this.orbit.target.copy(tw.b.target); this._orbitLimits(); this.orbit.enabled = true; this.orbit.update(); }
+        return;
+      }
+      this.orbit.update();
+      this._clip(this.camera.position.distanceTo(this.orbit.target));
+      return;
+    }
     const k = this.keys;
     let fx = 0, fz = 0;
     if (k.KeyW || k.ArrowUp) fz -= 1; if (k.KeyS || k.ArrowDown) fz += 1;

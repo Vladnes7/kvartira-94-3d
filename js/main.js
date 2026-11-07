@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildMaterials } from './materials.js';
-import { buildArchitecture } from './plan.js';
+import { buildArchitecture, PRISMS } from './plan.js';
 import { buildRooms } from './rooms.js';
 import { MOVERS } from './casework.js';
 import { buildLighting } from './lighting.js';
@@ -74,14 +74,43 @@ async function boot() {
     toast(open ? 'Открыто' : 'Закрыто');
   }
 
+  // ---- overview cutaway: one horizontal clipping plane on every material (shadows clipped too),
+  // with flat dark caps on the cut walls like the poché of a floor plan ----
+  renderer.localClippingEnabled = true;
+  const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e5);
+  scene.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (m && !m.clippingPlanes) { m.clippingPlanes = [cutPlane]; m.clipShadows = true; }
+  });
+  const capMat = new THREE.MeshBasicMaterial({ color: '#2a2622', toneMapped: false });
+  const caps = new THREE.Group(); caps.name = 'cut-caps'; caps.visible = false; scene.add(caps);
+  for (const pr of PRISMS) {
+    const sh = new THREE.Shape(pr.poly.map(([x, y]) => new THREE.Vector2(x / 1000, -y / 1000)));
+    const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(g, capMat); mesh.userData.z = [pr.z0 / 1000, pr.z1 / 1000];
+    caps.add(mesh);
+  }
+  let cutH = 1.4, inOrbit = false;
+  const FULL = 3.1;
+  function applyCut() {
+    const on = inOrbit && cutH < FULL - 0.01;
+    cutPlane.constant = on ? cutH : 1e5;
+    caps.visible = on;
+    if (on) for (const c of caps.children) { const [z0, z1] = c.userData.z; c.visible = z0 < cutH && z1 > cutH; c.position.y = cutH + 0.0008; }
+    renderer.shadowMap.needsUpdate = true;
+  }
+
   const ui = initUI({
-    player, lighting,
+    player, lighting, camera,
     onModeChange: (m) => {
-      arch.ceilGroup.visible = m !== 'orbit';
-      scene.traverse((o) => { if (o.name === 'furn:outside') o.visible = m !== 'orbit'; });
-      scene.background.set(m === 'orbit' ? '#d9d4cc' : '#cfd9e3');
-      camera.fov = m === 'orbit' ? 45 : 68; camera.updateProjectionMatrix();
+      inOrbit = m === 'orbit';
+      arch.ceilGroup.visible = !inOrbit;
+      scene.traverse((o) => { if (o.name === 'furn:outside') o.visible = !inOrbit; });
+      scene.background.set(inOrbit ? '#d9d4cc' : '#cfd9e3');
+      applyCut();
     },
+    onCut: (h) => { cutH = h; applyCut(); },
+    cutH, FULL,
   });
 
   addEventListener('resize', () => {
